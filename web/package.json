@@ -1,0 +1,27 @@
+{
+  "name": "rustdesk-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure JS/TS business logic for the rustdesk web client (controller-only, force_relay over WebSocket).",
+  "main": "dist/rustdesk-web.js",
+  "scripts": {
+    "gen-proto": "node scripts/gen-proto.mjs",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "inject-web": "bash scripts/inject-web.sh"
+  },
+  "dependencies": {
+    "libsodium-wrappers-sumo": "^0.7.15",
+    "protobufjs": "^7.4.0"
+  },
+  "devDependencies": {
+
+    "protobufjs-cli": "^1.1.3",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}
