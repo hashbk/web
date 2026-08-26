@@ -1,0 +1,4 @@
+[submodule "rustdesk"]
+	path = rustdesk
+	url = https://github.com/rustdesk/rustdesk.git
+	branch = master
