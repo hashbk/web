@@ -11,6 +11,9 @@ import {
   encodeLockScreen,
 } from "../input/keyboard.js";
 import { applyCursor } from "../cursor/cursor.js";
+import { LocalFileSystem } from "../file/local-fs.js";
+import { FileTransferManager } from "../file/file-transfer.js";
+import type { JobProgress } from "../file/file-transfer.js";
 
 export interface BridgeConfig extends SessionConfig {
   cursorElement?: HTMLElement;
@@ -23,10 +26,13 @@ interface SessionEntry {
   manager: SessionManager;
   peerId: string;
   connected: boolean;
+  fileTransfer: FileTransferManager;
+  localFs: LocalFileSystem;
 }
 
 export class BridgeDispatcher {
   private sessions = new Map<string, SessionEntry>();
+  private currentSessionId: string | null = null;
 
   constructor(private config: BridgeConfig) {}
 
@@ -41,10 +47,19 @@ export class BridgeDispatcher {
           onVideoFrame: this.config.onVideoFrame,
           onRgba: this.config.onRgba,
         });
+        const localFs = new LocalFileSystem();
+        const transport = manager.getRelayTransport();
+        const fileTransfer = new FileTransferManager({
+          transport: transport ?? { send: () => {} },
+          localFs,
+          onGlobalEvent: this.config.onGlobalEvent,
+        });
         this.sessions.set(id, {
           manager,
           peerId: args.peer ?? "",
           connected: false,
+          fileTransfer,
+          localFs,
         });
         return JSON.stringify({ id });
       }
@@ -70,6 +85,17 @@ export class BridgeDispatcher {
           connType: ConnType.DEFAULT_CONN,
         });
         entry.connected = true;
+        const transport = entry.manager.getRelayTransport();
+        if (transport) {
+          entry.fileTransfer = new FileTransferManager({
+            transport,
+            localFs: entry.localFs,
+            onGlobalEvent: this.config.onGlobalEvent,
+          });
+        }
+        entry.manager.setFileResponseHandler((fr) => {
+          entry.fileTransfer.handleFileResponse(fr);
+        });
         return JSON.stringify(peerInfo);
       }
       case "session_close": {
@@ -156,26 +182,182 @@ export class BridgeDispatcher {
         }
         return "";
       }
+      case "read_remote_dir": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          const args = JSON.parse(value) as {
+            path: string;
+            include_hidden: boolean;
+          };
+          ft.readRemoteDir(args.path, args.include_hidden);
+        }
+        return "";
+      }
+      case "send_files": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          const args = JSON.parse(value) as {
+            id: number;
+            path: string;
+            to: string;
+            file_num: number;
+            include_hidden: boolean;
+            is_remote: boolean;
+            is_dir: boolean;
+          };
+          await ft.sendFiles({
+            id: args.id,
+            path: args.path,
+            to: args.to,
+            fileNum: args.file_num,
+            includeHidden: args.include_hidden,
+            isRemote: args.is_remote,
+            isDir: args.is_dir,
+          });
+        }
+        return "";
+      }
+      case "confirm_override_file": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          const args = JSON.parse(value) as {
+            id: number;
+            file_num: number;
+            need_override: boolean;
+            remember: boolean;
+            is_upload: boolean;
+          };
+          ft.confirmOverrideFile(
+            args.id,
+            args.file_num,
+            args.need_override,
+            args.remember,
+            args.is_upload,
+          );
+        }
+        return "";
+      }
+      case "remove_file": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          const args = JSON.parse(value) as {
+            id: number;
+            path: string;
+            file_num: number;
+            is_remote: boolean;
+          };
+          ft.removeFile(args.id, args.path, args.file_num, args.is_remote);
+        }
+        return "";
+      }
+      case "read_dir_to_remove_recursive": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          const args = JSON.parse(value) as {
+            id: number;
+            path: string;
+            is_remote: boolean;
+            show_hidden: boolean;
+          };
+          ft.removeDirAll(
+            args.id,
+            args.path,
+            args.is_remote,
+            args.show_hidden,
+          );
+        }
+        return "";
+      }
+      case "remove_all_empty_dirs": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          const args = JSON.parse(value) as {
+            id: number;
+            path: string;
+            is_remote: boolean;
+          };
+          ft.removeAllEmptyDirs(args.id, args.path, args.is_remote);
+        }
+        return "";
+      }
+      case "cancel_job": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          ft.cancelJob(parseInt(value, 10));
+        }
+        return "";
+      }
+      case "create_dir": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          const args = JSON.parse(value) as {
+            id: number;
+            path: string;
+            is_remote: boolean;
+          };
+          ft.createDir(args.id, args.path, args.is_remote);
+        }
+        return "";
+      }
       default:
         return "";
     }
   }
 
-  async getByName(_name: string, _arg: string): Promise<string> {
-    return "";
+  async getByName(name: string, arg: string): Promise<string> {
+    switch (name) {
+      case "read_local_dir": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "";
+        try {
+          const args = JSON.parse(arg) as {
+            path: string;
+            include_hidden: boolean;
+          };
+          return await entry.localFs.readDirToJson(
+            args.path,
+            args.include_hidden,
+          );
+        } catch {
+          return "";
+        }
+      }
+      case "platform": {
+        return "Web";
+      }
+      default:
+        return "";
+    }
   }
-
-  private currentSessionId: string | null = null;
 
   setSessionId(id: string): void {
     this.currentSessionId = id;
   }
 
-  private getCurrentTransport() {
+  getJobs(): JobProgress[] {
+    const entry = this.getCurrentSessionEntry();
+    return entry ? entry.fileTransfer.getAllJobs() : [];
+  }
+
+  getLocalFileSystem(): LocalFileSystem | null {
+    const entry = this.getCurrentSessionEntry();
+    return entry ? entry.localFs : null;
+  }
+
+  private getCurrentSessionEntry(): SessionEntry | null {
     const id = this.currentSessionId;
     if (!id) return null;
-    const entry = this.sessions.get(id);
+    return this.sessions.get(id) ?? null;
+  }
+
+  private getCurrentTransport() {
+    const entry = this.getCurrentSessionEntry();
     if (!entry) return null;
     return entry.manager.getRelayTransport();
+  }
+
+  private getCurrentFileTransfer(): FileTransferManager | null {
+    const entry = this.getCurrentSessionEntry();
+    return entry ? entry.fileTransfer : null;
   }
 }

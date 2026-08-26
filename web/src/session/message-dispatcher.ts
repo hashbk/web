@@ -38,6 +38,12 @@ export class MessageDispatcher {
     this.handleMessage(msg);
   }
 
+  setFileResponseHandler(
+    handler: (fr: hbb.IFileResponse) => void,
+  ): void {
+    this.callbacks.onFileResponse = handler;
+  }
+
   handleMessage(msg: hbb.Message): void {
     if (msg.videoFrame) {
       this.videoDecoder.decodeVideoFrame(msg.videoFrame);
