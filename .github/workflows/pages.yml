@@ -1,0 +1,103 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/src/**'
+      - 'web/scripts/**'
+      - 'web/package.json'
+      - 'web/package-lock.json'
+      - 'web/tsconfig.json'
+      - 'web/vite.config*.ts'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Flutter Web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build JS bridge bundle
+        run: |
+          npm ci
+          npm run gen-proto
+          npm run build:web
+        working-directory: web
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          cache: true
+
+      - name: Create Flutter web template
+        run: flutter create --platforms=web --project-name flutter_hbb .
+        working-directory: rustdesk/flutter
+
+      - name: Inject JS bridge bundle
+        run: |
+          mkdir -p rustdesk/flutter/web/js
+          cp web/dist/rustdesk-web.js rustdesk/flutter/web/js/rustdesk-web.js
+
+      - name: Patch index.html to load JS bridge
+        run: |
+          INDEX="rustdesk/flutter/web/index.html"
+          if [ -f "$INDEX" ]; then
+            sed -i 's|</head>|<script type="module" src="js/rustdesk-web.js"></script></head>|' "$INDEX"
+            echo "Patched index.html to load JS bridge"
+          else
+            echo "ERROR: index.html not found" >&2
+            exit 1
+          fi
+
+      - name: Flutter pub get
+        run: flutter pub get
+        working-directory: rustdesk/flutter
+
+      - name: Build Flutter web
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          flutter build web --release --base-href "/${REPO_NAME}/"
+        working-directory: rustdesk/flutter
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: rustdesk/flutter/build/web
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

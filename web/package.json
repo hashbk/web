@@ -8,6 +8,7 @@
   "scripts": {
     "gen-proto": "node scripts/gen-proto.mjs",
     "build": "vite build",
+    "build:web": "vite build --config vite.config.web.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
