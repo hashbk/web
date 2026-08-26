@@ -69,7 +69,7 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
       case "remember":
         return "false";
       case "get_conn_status":
-        return "";
+        return JSON.stringify({ status_num: 0 });
       case "options":
         return "{}";
       case "fav":
