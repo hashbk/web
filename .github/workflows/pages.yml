@@ -43,6 +43,7 @@ jobs:
         run: |
           npm ci
           npm run gen-proto
+          npm run gen-lang
           npm run build:web
         working-directory: web
 

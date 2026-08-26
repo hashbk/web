@@ -36,6 +36,10 @@ jobs:
         run: npm run gen-proto
         working-directory: web
 
+      - name: Generate translations
+        run: npm run gen-lang
+        working-directory: web
+
       - name: Typecheck
         run: npm run typecheck
         working-directory: web
