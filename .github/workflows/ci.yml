@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Typecheck, Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Generate protobuf
+        run: npm run gen-proto
+        working-directory: web
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: web
+
+      - name: Test
+        run: npm run test
+        working-directory: web
+
+      - name: Build
+        run: npm run build
+        working-directory: web
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-web-bundle
+          path: web/dist/rustdesk-web.js
+          if-no-files-found: error
+          retention-days: 30
