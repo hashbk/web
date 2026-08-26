@@ -114,4 +114,20 @@ g["isMobile"] = (): boolean => {
 
 g["rustdeskLocalFonts"] = false;
 
+g["init"] = (): void => {
+  initSodium()
+    .then(() => {
+      sodiumReady = true;
+      if (typeof g["onInitFinished"] === "function") {
+        (g["onInitFinished"] as () => void)();
+      }
+    })
+    .catch((err) => {
+      console.error("[rustdesk-web] init failed:", err);
+      if (typeof g["onInitFinished"] === "function") {
+        (g["onInitFinished"] as () => void)();
+      }
+    });
+};
+
 console.log("[rustdesk-web] bridge ready (sodium:", sodiumReady ? "ready" : "loading", ")");
