@@ -4,12 +4,17 @@ import { RelayClient } from "../relay/relay-client.js";
 import type { LoginParams, PeerInfo, RelayConfig } from "../relay/relay-client.js";
 import { initSodium } from "../crypto/sodium.js";
 import { ConnType } from "../constants.js";
+import { VideoDecoderManager } from "../video/video-decoder.js";
+import { MessageDispatcher } from "./message-dispatcher.js";
 
 export interface SessionConfig {
   rendezvousServer: string;
   apiServer?: string;
   licenceKey?: string;
   rsPubKey?: string;
+  onGlobalEvent?: (json: string) => void;
+  onVideoFrame?: (display: number, frame: unknown) => void;
+  onRgba?: (display: number, rgba: Uint8Array) => void;
 }
 
 export interface ConnectParams {
@@ -24,6 +29,8 @@ export interface ConnectParams {
 export class SessionManager {
   private rendezvous: RendezvousClient;
   private relay: RelayClient;
+  private videoDecoder: VideoDecoderManager;
+  private dispatcher: MessageDispatcher | null = null;
 
   constructor(config: SessionConfig) {
     const rendezvousConfig: RendezvousConfig = {
@@ -38,6 +45,15 @@ export class SessionManager {
     };
     this.rendezvous = new RendezvousClient(rendezvousConfig);
     this.relay = new RelayClient(relayConfig);
+
+    this.videoDecoder = new VideoDecoderManager({
+      onVideoFrame: config.onVideoFrame,
+      onRgba: config.onRgba,
+    });
+
+    this.dispatcher = new MessageDispatcher(this.videoDecoder, {
+      onGlobalEvent: config.onGlobalEvent,
+    });
   }
 
   async connect(params: ConnectParams): Promise<PeerInfo> {
@@ -66,14 +82,31 @@ export class SessionManager {
       connType,
       sessionId,
     };
-    return this.relay.login(loginParams);
+    const peerInfo = await this.relay.login(loginParams);
+
+    this.installMessageDispatcher();
+
+    return peerInfo;
+  }
+
+  private installMessageDispatcher(): void {
+    const transport = this.relay.getTransport();
+    if (!transport || !this.dispatcher) return;
+    transport.onMessage = (bytes: Uint8Array) => {
+      this.dispatcher!.dispatch(bytes);
+    };
   }
 
   getRelayTransport() {
     return this.relay.getTransport();
   }
 
+  getVideoDecoder(): VideoDecoderManager {
+    return this.videoDecoder;
+  }
+
   close(): void {
+    this.videoDecoder.close();
     this.relay.close();
   }
 }
