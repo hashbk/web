@@ -1,3 +1,4 @@
 node_modules/
 dist/
 src/proto/generated/
+src/i18n/translations.json

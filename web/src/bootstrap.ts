@@ -2,6 +2,7 @@ import { BridgeDispatcher } from "./bridge/dispatcher.js";
 import type { BridgeConfig } from "./bridge/dispatcher.js";
 import { initSodium } from "./crypto/sodium.js";
 import { DEFAULT_RS_PUB_KEY, APP_VERSION } from "./constants.js";
+import { translate, getLangs, getLocalOption, setLocalOption } from "./i18n/translate.js";
 
 const g = globalThis as unknown as Record<string, unknown>;
 
@@ -40,6 +41,13 @@ function getDispatcher(): BridgeDispatcher {
 g["setByName"] = (name: string, ...args: unknown[]): string => {
   const value = typeof args[0] === "string" ? args[0] : "";
   try {
+    if (name === "option:local") {
+      const opts = JSON.parse(value) as { name?: string; value?: string };
+      if (opts.name) {
+        setLocalOption(opts.name, opts.value ?? "");
+      }
+      return "";
+    }
     const d = getDispatcher();
     void d.setByName(name, value).catch((err) => {
       console.error(`setByName("${name}") failed:`, err);
@@ -69,7 +77,7 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
       case "remember":
         return "false";
       case "get_conn_status":
-        return "";
+        return JSON.stringify({ status_num: 0 });
       case "options":
         return "{}";
       case "fav":
@@ -83,9 +91,13 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
       case "image_quality":
         return "balanced";
       case "langs":
-        return JSON.stringify([
-          { code: "en", name: "English" },
-        ]);
+        return getLangs();
+      case "translate": {
+        const params = JSON.parse(arg) as { locale?: string; text?: string };
+        return translate(params.locale ?? "en", params.text ?? "");
+      }
+      case "option:local":
+        return getLocalOption(arg);
       case "load_recent_peers_sync":
         return "[]";
       case "main_display":
