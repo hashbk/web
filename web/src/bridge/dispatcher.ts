@@ -14,6 +14,7 @@ import { applyCursor } from "../cursor/cursor.js";
 import { LocalFileSystem } from "../file/local-fs.js";
 import { FileTransferManager } from "../file/file-transfer.js";
 import type { JobProgress } from "../file/file-transfer.js";
+import { RendezvousClient } from "../rendezvous/rendezvous-client.js";
 
 export interface BridgeConfig extends SessionConfig {
   cursorElement?: HTMLElement;
@@ -296,6 +297,28 @@ export class BridgeDispatcher {
             is_remote: boolean;
           };
           ft.createDir(args.id, args.path, args.is_remote);
+        }
+        return "";
+      }
+      case "query_onlines": {
+        const ids = JSON.parse(value) as string[];
+        if (Array.isArray(ids) && ids.length > 0 && this.config.rendezvousServer) {
+          try {
+            const client = new RendezvousClient({
+              rendezvousServer: this.config.rendezvousServer,
+              apiServer: this.config.apiServer,
+            });
+            const { onlines, offlines } = await client.queryOnlines("", ids);
+            this.config.onGlobalEvent?.(
+              JSON.stringify({
+                name: "callback_query_onlines",
+                onlines: onlines.join(","),
+                offlines: offlines.join(","),
+              }),
+            );
+          } catch (e) {
+            console.error("query_onlines failed:", e);
+          }
         }
         return "";
       }
