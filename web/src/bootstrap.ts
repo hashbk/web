@@ -3,6 +3,14 @@ import type { BridgeConfig } from "./bridge/dispatcher.js";
 import { initSodium } from "./crypto/sodium.js";
 import { DEFAULT_RS_PUB_KEY, APP_VERSION } from "./constants.js";
 import { translate, getLangs, getLocalOption, setLocalOption } from "./i18n/translate.js";
+import {
+  getOption,
+  setOption,
+  getAllOptions,
+  setAllOptions,
+  getUserDefaultOption,
+  setUserDefaultOption,
+} from "./config/option-store.js";
 
 const g = globalThis as unknown as Record<string, unknown>;
 
@@ -48,6 +56,24 @@ g["setByName"] = (name: string, ...args: unknown[]): string => {
       }
       return "";
     }
+    if (name === "option") {
+      const opts = JSON.parse(value) as { name?: string; value?: string };
+      if (opts.name) {
+        setOption(opts.name, opts.value ?? "");
+      }
+      return "";
+    }
+    if (name === "option:user:default") {
+      const opts = JSON.parse(value) as { name?: string; value?: string };
+      if (opts.name) {
+        setUserDefaultOption(opts.name, opts.value ?? "");
+      }
+      return "";
+    }
+    if (name === "options") {
+      setAllOptions(value);
+      return "";
+    }
     const d = getDispatcher();
     void d.setByName(name, value).catch((err) => {
       console.error(`setByName("${name}") failed:`, err);
@@ -79,7 +105,7 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
       case "get_conn_status":
         return JSON.stringify({ status_num: 0 });
       case "options":
-        return "{}";
+        return getAllOptions();
       case "fav":
         return "[]";
       case "my_id":
@@ -98,9 +124,15 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
       }
       case "option:local":
         return getLocalOption(arg);
+      case "option":
+        return getOption(arg);
+      case "option:user:default":
+        return getUserDefaultOption(arg);
       case "load_recent_peers_sync":
         return "[]";
       case "main_display":
+        return "";
+      case "build_date":
         return "";
       case "resolve_avatar_url":
         return arg;
