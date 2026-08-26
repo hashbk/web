@@ -70,3 +70,29 @@ export type {
   CursorDomValue,
 } from "./cursor/cursor.js";
 export * from "./constants.js";
+export { FileTransferManager } from "./file/file-transfer.js";
+export type {
+  JobProgress,
+  JobState,
+  FileTransferConfig,
+  SendFilesParams,
+} from "./file/file-transfer.js";
+export { LocalFileSystem, isFileSystemAccessSupported } from "./file/local-fs.js";
+export {
+  encodeReadDir,
+  encodeSendFiles,
+  encodeReceiveFiles,
+  encodeCreateDir,
+  encodeRemoveFile,
+  encodeRemoveDir,
+  encodeReadAllFiles,
+  encodeCancelJob,
+  encodeSendConfirm,
+  encodeReadEmptyDirs,
+  makeFileEntry,
+  makeFileDirJson,
+  fileDirToJson,
+  fileResponseDirToJson,
+  fileResponseEmptyDirsToJson,
+} from "./file/file-message.js";
+export type { FileEntryJson, FileDirJson } from "./file/file-message.js";

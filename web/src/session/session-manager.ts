@@ -7,6 +7,8 @@ import { ConnType } from "../constants.js";
 import { VideoDecoderManager } from "../video/video-decoder.js";
 import { MessageDispatcher } from "./message-dispatcher.js";
 
+import { hbb } from "../proto/index.js";
+
 export interface SessionConfig {
   rendezvousServer: string;
   apiServer?: string;
@@ -15,6 +17,8 @@ export interface SessionConfig {
   onGlobalEvent?: (json: string) => void;
   onVideoFrame?: (display: number, frame: unknown) => void;
   onRgba?: (display: number, rgba: Uint8Array) => void;
+  onFileResponse?: (fileResponse: hbb.IFileResponse) => void;
+  onFileAction?: (fileAction: hbb.IFileAction) => void;
 }
 
 export interface ConnectParams {
@@ -53,6 +57,8 @@ export class SessionManager {
 
     this.dispatcher = new MessageDispatcher(this.videoDecoder, {
       onGlobalEvent: config.onGlobalEvent,
+      onFileResponse: config.onFileResponse,
+      onFileAction: config.onFileAction,
     });
   }
 
@@ -103,6 +109,14 @@ export class SessionManager {
 
   getVideoDecoder(): VideoDecoderManager {
     return this.videoDecoder;
+  }
+
+  setFileResponseHandler(
+    handler: (fr: hbb.IFileResponse) => void,
+  ): void {
+    if (this.dispatcher) {
+      this.dispatcher.setFileResponseHandler(handler);
+    }
   }
 
   close(): void {
