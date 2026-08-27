@@ -70,7 +70,9 @@ export class RelayClient {
     if (!this.transport) throw new Error("relay not connected");
     const rsPk = getRsPubKey(this.config.rsPubKey ?? DEFAULT_RS_PUB_KEY);
     if (!signedIdPk || signedIdPk.length === 0) {
-      throw new Error("missing signed_id_pk");
+      const emptyMsg = hbb.Message.create({});
+      this.transport.send(hbb.Message.encode(emptyMsg).finish());
+      return;
     }
     const { id, pk: peerSignPk } = decodeIdPk(signedIdPk, rsPk);
     if (id !== peerId) throw new Error(`peer id mismatch: ${id} != ${peerId}`);
@@ -95,7 +97,7 @@ export class RelayClient {
     this.transport.setKey(key);
   }
 
-  async login(params: LoginParams): Promise<PeerInfo> {
+  async login(params: LoginParams): Promise<hbb.IPeerInfo> {
     if (!this.transport) throw new Error("relay not connected");
     const hashBytes = await this.transport.recv(15000);
     const hashMsg = hbb.Message.decode(hashBytes);
@@ -127,13 +129,7 @@ export class RelayClient {
         throw new Error(`login failed: ${respMsg.loginResponse.error}`);
       }
       if (respMsg.loginResponse.peerInfo) {
-        const pi = respMsg.loginResponse.peerInfo;
-        return {
-          username: pi.username ?? "",
-          hostname: pi.hostname ?? "",
-          platform: pi.platform ?? "",
-          version: pi.version ?? "",
-        };
+        return respMsg.loginResponse.peerInfo;
       }
     }
     throw new Error("login: unexpected response");

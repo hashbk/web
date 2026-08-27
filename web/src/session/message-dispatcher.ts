@@ -6,6 +6,64 @@ import {
   cursorIdToJson,
 } from "../cursor/cursor.js";
 
+export function buildPeerInfoEventJson(pi: hbb.IPeerInfo): string {
+  const displays = (pi.displays ?? []).map((d) => {
+    const h: Record<string, number> = {
+      x: d.x ?? 0,
+      y: d.y ?? 0,
+      width: d.width ?? 0,
+      height: d.height ?? 0,
+      cursor_embedded: d.cursorEmbedded ? 1 : 0,
+    };
+    if (d.originalResolution) {
+      h["original_width"] = d.originalResolution.width ?? 0;
+      h["original_height"] = d.originalResolution.height ?? 0;
+    }
+    const scale = d.scale ?? 0;
+    if (scale > 0 && (d.width ?? 0) > 0) {
+      h["scaled_width"] = Math.round((d.width as number) / scale);
+    }
+    return h;
+  });
+
+  const features: Record<string, boolean> = {};
+  if (pi.features) {
+    features["privacy_mode"] = pi.features.privacyMode ?? false;
+  }
+
+  const resolutions = (pi.resolutions?.resolutions ?? []).map((r) => ({
+    width: r.width ?? 0,
+    height: r.height ?? 0,
+  }));
+
+  return JSON.stringify({
+    name: "peer_info",
+    username: pi.username ?? "",
+    hostname: pi.hostname ?? "",
+    platform: pi.platform ?? "",
+    sas_enabled: pi.sasEnabled ? "true" : "false",
+    displays: JSON.stringify(displays),
+    version: pi.version ?? "",
+    features: JSON.stringify(features),
+    current_display: String(pi.currentDisplay ?? 0),
+    resolutions: JSON.stringify(resolutions),
+    platform_additions: pi.platformAdditions ?? "",
+  });
+}
+
+export function buildConnectionReadyEventJson(
+  isSecured: boolean,
+  direct: boolean,
+  streamType: string = "",
+): string {
+  return JSON.stringify({
+    name: "connection_ready",
+    secure: isSecured ? "true" : "false",
+    direct: direct ? "true" : "false",
+    stream_type: streamType,
+  });
+}
+
 export interface MessageDispatcherCallbacks {
   onGlobalEvent?: (json: string) => void;
   onPeerInfo?: (peerInfo: hbb.IPeerInfo) => void;
@@ -70,6 +128,7 @@ export class MessageDispatcher {
       return;
     }
     if (msg.peerInfo) {
+      this.callbacks.onGlobalEvent?.(buildPeerInfoEventJson(msg.peerInfo));
       this.callbacks.onPeerInfo?.(msg.peerInfo);
       return;
     }

@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { hbb } from "../src/proto/index.js";
 import { VideoDecoderManager } from "../src/video/video-decoder.js";
-import { MessageDispatcher } from "../src/session/message-dispatcher.js";
+import {
+  MessageDispatcher,
+  buildPeerInfoEventJson,
+  buildConnectionReadyEventJson,
+} from "../src/session/message-dispatcher.js";
 
 function makeDispatcher(callbacks: Record<string, (...args: any[]) => void> = {}) {
   const videoDecoder = new VideoDecoderManager({});
@@ -130,6 +134,40 @@ describe("MessageDispatcher", () => {
     expect(peerInfo!.platform).toBe("Linux");
   });
 
+  it("forwards peerInfo as peer_info event via onGlobalEvent", () => {
+    const events: string[] = [];
+    const { dispatcher } = makeDispatcher({
+      onGlobalEvent: (json: string) => events.push(json),
+    });
+    const msg = hbb.Message.create({
+      peerInfo: {
+        username: "user1",
+        hostname: "host1",
+        platform: "Linux",
+        version: "1.4.9",
+        sasEnabled: true,
+        currentDisplay: 0,
+        displays: [{ x: 0, y: 0, width: 1920, height: 1080, cursorEmbedded: false }],
+        features: { privacyMode: false },
+      },
+    });
+    dispatcher.dispatch(hbb.Message.encode(msg).finish());
+    expect(events.length).toBe(1);
+    const parsed = JSON.parse(events[0]);
+    expect(parsed.name).toBe("peer_info");
+    expect(parsed.username).toBe("user1");
+    expect(parsed.hostname).toBe("host1");
+    expect(parsed.platform).toBe("Linux");
+    expect(parsed.version).toBe("1.4.9");
+    expect(parsed.sas_enabled).toBe("true");
+    expect(parsed.current_display).toBe("0");
+    const displays = JSON.parse(parsed.displays);
+    expect(displays[0].width).toBe(1920);
+    expect(displays[0].height).toBe(1080);
+    const features = JSON.parse(parsed.features);
+    expect(features.privacy_mode).toBe(false);
+  });
+
   it("silently ignores audioFrame", () => {
     const { dispatcher } = makeDispatcher({});
     const msg = hbb.Message.create({
@@ -153,5 +191,75 @@ describe("MessageDispatcher", () => {
   it("handles invalid bytes gracefully", () => {
     const { dispatcher } = makeDispatcher({});
     expect(() => dispatcher.dispatch(new Uint8Array([0xff, 0xff]))).not.toThrow();
+  });
+});
+
+describe("buildPeerInfoEventJson", () => {
+  it("builds a complete peer_info event with all fields", () => {
+    const pi: hbb.IPeerInfo = {
+      username: "alice",
+      hostname: "bob-pc",
+      platform: "Windows",
+      version: "1.4.10",
+      sasEnabled: false,
+      currentDisplay: 1,
+      displays: [
+        { x: 0, y: 0, width: 2560, height: 1440, cursorEmbedded: true, scale: 1.5 },
+      ],
+      features: { privacyMode: true, terminal: false },
+      resolutions: { resolutions: [{ width: 1920, height: 1080 }, { width: 2560, height: 1440 }] },
+      platformAdditions: "extra",
+    };
+    const json = buildPeerInfoEventJson(pi);
+    const parsed = JSON.parse(json);
+    expect(parsed.name).toBe("peer_info");
+    expect(parsed.username).toBe("alice");
+    expect(parsed.hostname).toBe("bob-pc");
+    expect(parsed.platform).toBe("Windows");
+    expect(parsed.version).toBe("1.4.10");
+    expect(parsed.sas_enabled).toBe("false");
+    expect(parsed.current_display).toBe("1");
+    expect(parsed.platform_additions).toBe("extra");
+    const displays = JSON.parse(parsed.displays);
+    expect(displays[0].width).toBe(2560);
+    expect(displays[0].height).toBe(1440);
+    expect(displays[0].cursor_embedded).toBe(1);
+    expect(displays[0].scaled_width).toBe(1707);
+    const features = JSON.parse(parsed.features);
+    expect(features.privacy_mode).toBe(true);
+    const resolutions = JSON.parse(parsed.resolutions);
+    expect(resolutions.length).toBe(2);
+    expect(resolutions[0].width).toBe(1920);
+  });
+
+  it("handles empty/null fields with defaults", () => {
+    const json = buildPeerInfoEventJson({});
+    const parsed = JSON.parse(json);
+    expect(parsed.name).toBe("peer_info");
+    expect(parsed.username).toBe("");
+    expect(parsed.sas_enabled).toBe("false");
+    expect(parsed.current_display).toBe("0");
+    expect(JSON.parse(parsed.displays)).toEqual([]);
+    expect(JSON.parse(parsed.features)).toEqual({});
+    expect(JSON.parse(parsed.resolutions)).toEqual([]);
+  });
+});
+
+describe("buildConnectionReadyEventJson", () => {
+  it("builds a connection_ready event", () => {
+    const json = buildConnectionReadyEventJson(true, false, "");
+    const parsed = JSON.parse(json);
+    expect(parsed.name).toBe("connection_ready");
+    expect(parsed.secure).toBe("true");
+    expect(parsed.direct).toBe("false");
+    expect(parsed.stream_type).toBe("");
+  });
+
+  it("builds a direct unsecured connection_ready event", () => {
+    const json = buildConnectionReadyEventJson(false, true, "texture");
+    const parsed = JSON.parse(json);
+    expect(parsed.secure).toBe("false");
+    expect(parsed.direct).toBe("true");
+    expect(parsed.stream_type).toBe("texture");
   });
 });
