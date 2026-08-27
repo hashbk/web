@@ -198,6 +198,7 @@ export class VideoDecoderManager {
     h264: false, h265: false, vp8: false, av1: false,
   };
   private capsChecked = false;
+  private dimsWarned = false;
 
   constructor(private callbacks: WebCodecsCallbacks = {}) {}
 
@@ -384,6 +385,13 @@ export class VideoDecoderManager {
 
     if (!entry.configured) {
       if (this.width <= 0 || this.height <= 0) {
+        if (!this.dimsWarned) {
+          this.dimsWarned = true;
+          console.warn(
+            `[rustdesk-web] VideoDecoder: dropping frames — dimensions not set (width=${this.width}, height=${this.height}). ` +
+              `Waiting for peerInfo/switchDisplay to set dimensions.`,
+          );
+        }
         return null;
       }
       const config: Record<string, unknown> = {
