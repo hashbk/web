@@ -164,13 +164,22 @@ export class MessageDispatcher {
   }
 
   private handleCursorData(cursorData: hbb.ICursorData): void {
+    const width = cursorData.width ?? 0;
+    const height = cursorData.height ?? 0;
+    const expectedLen = width * height * 4;
+    const rawColors = (cursorData.colors as Uint8Array) ?? new Uint8Array(0);
+    let colors = rawColors;
+    if (expectedLen > 0 && rawColors.length !== expectedLen) {
+      colors = new Uint8Array(expectedLen);
+      colors.set(rawColors.subarray(0, Math.min(rawColors.length, expectedLen)));
+    }
     const json = cursorDataToJson(
       cursorData.id as number,
       cursorData.hotx ?? 0,
       cursorData.hoty ?? 0,
-      cursorData.width ?? 0,
-      cursorData.height ?? 0,
-      (cursorData.colors as Uint8Array) ?? new Uint8Array(0),
+      width,
+      height,
+      colors,
     );
     this.callbacks.onGlobalEvent?.(json);
   }
