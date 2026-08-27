@@ -330,6 +330,10 @@ export class VideoDecoderManager {
     }
 
     if (!entry.configured) {
+      if (this.width <= 0 || this.height <= 0) {
+        console.warn(`VideoDecoder skip configure (display ${display}): dimensions not set (${this.width}x${this.height})`);
+        return null;
+      }
       const config: Record<string, unknown> = {
         codec,
         codedWidth: this.width,
@@ -379,7 +383,9 @@ export class VideoDecoderManager {
   }
 
   private handleRgb(display: number, rgb: Uint8Array): void {
-    this.callbacks.onRgba?.(display, rgb);
+    const aligned = new Uint8Array(rgb.length);
+    aligned.set(rgb);
+    this.callbacks.onRgba?.(display, aligned);
   }
 
   private closeDecoder(display: number): void {
