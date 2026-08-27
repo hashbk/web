@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { setOption, deriveApiServer } from "../src/config/option-store.js";
+import { setOption, deriveApiServer, deriveRendezvousServer } from "../src/config/option-store.js";
 
 class LocalStorageMock {
   private store = new Map<string, string>();
@@ -75,5 +75,21 @@ describe("deriveApiServer", () => {
     setOption("api-server", "https://api.example.com");
     setOption("custom-rendezvous-server", "rs.example.com:21116");
     expect(deriveApiServer()).toBe("https://api.example.com");
+  });
+});
+
+describe("deriveRendezvousServer", () => {
+  it("returns custom-rendezvous-server with port as-is", () => {
+    setOption("custom-rendezvous-server", "rs.example.com:21116");
+    expect(deriveRendezvousServer()).toBe("rs.example.com:21116");
+  });
+
+  it("appends default port when custom-rendezvous-server has no port", () => {
+    setOption("custom-rendezvous-server", "rs.example.com");
+    expect(deriveRendezvousServer()).toBe("rs.example.com:21116");
+  });
+
+  it("returns default server when custom-rendezvous-server empty", () => {
+    expect(deriveRendezvousServer()).toBe("rs-ny.rustdesk.com:21116");
   });
 });

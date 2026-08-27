@@ -15,6 +15,7 @@ import { LocalFileSystem } from "../file/local-fs.js";
 import { FileTransferManager } from "../file/file-transfer.js";
 import type { JobProgress } from "../file/file-transfer.js";
 import { RendezvousClient } from "../rendezvous/rendezvous-client.js";
+import { deriveRendezvousServer } from "../config/option-store.js";
 
 export interface BridgeConfig extends SessionConfig {
   cursorElement?: HTMLElement;
@@ -42,8 +43,10 @@ export class BridgeDispatcher {
       case "session_add_sync": {
         const args = JSON.parse(value) as { id?: string; peer?: string };
         const id = args.id ?? "";
+        const rendezvousServer = deriveRendezvousServer();
         const manager = new SessionManager({
           ...this.config,
+          rendezvousServer,
           onGlobalEvent: this.config.onGlobalEvent,
           onVideoFrame: this.config.onVideoFrame,
           onRgba: this.config.onRgba,
@@ -57,31 +60,31 @@ export class BridgeDispatcher {
         });
         this.sessions.set(id, {
           manager,
-          peerId: args.peer ?? "",
+          peerId: id,
           connected: false,
           fileTransfer,
           localFs,
         });
+        this.currentSessionId = id;
         return JSON.stringify({ id });
       }
       case "session_start": {
         return "";
       }
-      case "session_login": {
+      case "login": {
         const args = JSON.parse(value) as {
-          id?: string;
-          peer?: string;
+          os_username?: string;
+          os_password?: string;
           password?: string;
-          my_id?: string;
-          my_name?: string;
+          remember?: boolean;
         };
-        const entry = args.id ? this.sessions.get(args.id) : undefined;
-        if (!entry) throw new Error(`session not found: ${args.id}`);
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) throw new Error("login: no active session");
         const peerInfo = await entry.manager.connect({
-          peerId: args.peer ?? entry.peerId,
+          peerId: entry.peerId,
           password: args.password ?? "",
-          myId: args.my_id ?? "",
-          myName: args.my_name ?? "web",
+          myId: "",
+          myName: "web",
           myPlatform: "Web",
           connType: ConnType.DEFAULT_CONN,
         });
@@ -302,10 +305,11 @@ export class BridgeDispatcher {
       }
       case "query_onlines": {
         const ids = JSON.parse(value) as string[];
-        if (Array.isArray(ids) && ids.length > 0 && this.config.rendezvousServer) {
+        const rendezvousServer = deriveRendezvousServer();
+        if (Array.isArray(ids) && ids.length > 0 && rendezvousServer) {
           try {
             const client = new RendezvousClient({
-              rendezvousServer: this.config.rendezvousServer,
+              rendezvousServer,
               apiServer: this.config.apiServer,
             });
             const { onlines, offlines } = await client.queryOnlines("", ids);

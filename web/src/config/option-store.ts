@@ -134,3 +134,12 @@ export function deriveApiServer(): string {
   }
   return res;
 }
+
+const DEFAULT_RENDEZVOUS_SERVER = "rs-ny.rustdesk.com";
+
+export function deriveRendezvousServer(): string {
+  const custom = getOption("custom-rendezvous-server");
+  const host = custom || DEFAULT_RENDEZVOUS_SERVER;
+  if (host.includes(":")) return host;
+  return `${host}:${RENDEZVOUS_PORT}`;
+}
