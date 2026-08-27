@@ -1,8 +1,15 @@
 import { Encrypt } from "./encrypt.js";
 
+interface PendingRecv {
+  resolve: (data: Uint8Array) => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
 export class WsTransport {
   private encrypt: Encrypt | null = null;
-  private pendingResolvers: Array<(data: Uint8Array) => void> = [];
+  private pendingRecvs: PendingRecv[] = [];
+  private closed = false;
   onMessage: ((data: Uint8Array) => void) | null = null;
   onClose: (() => void) | null = null;
   onError: ((e: Error) => void) | null = null;
@@ -18,15 +25,34 @@ export class WsTransport {
         this.onError?.(e instanceof Error ? e : new Error(String(e)));
         return;
       }
-      const resolver = this.pendingResolvers.shift();
-      if (resolver) {
-        resolver(plain);
+      const pending = this.pendingRecvs.shift();
+      if (pending) {
+        if (pending.timer) clearTimeout(pending.timer);
+        pending.resolve(plain);
       } else {
         this.onMessage?.(plain);
       }
     };
-    ws.onclose = () => this.onClose?.();
-    ws.onerror = () => this.onError?.(new Error("ws error"));
+    ws.onclose = () => {
+      this.closed = true;
+      this.rejectAllPending(new Error("ws closed"));
+      this.onClose?.();
+    };
+    ws.onerror = () => {
+      const err = new Error("ws error");
+      if (this.closed) return;
+      this.closed = true;
+      this.rejectAllPending(err);
+      this.onError?.(err);
+    };
+  }
+
+  private rejectAllPending(err: Error): void {
+    for (const p of this.pendingRecvs) {
+      if (p.timer) clearTimeout(p.timer);
+      p.reject(err);
+    }
+    this.pendingRecvs = [];
   }
 
   static connect(url: string): Promise<WsTransport> {
@@ -59,13 +85,28 @@ export class WsTransport {
     return this.encrypt !== null;
   }
 
-  recv(): Promise<Uint8Array> {
-    return new Promise((resolve) => {
-      this.pendingResolvers.push(resolve);
+  recv(timeoutMs?: number): Promise<Uint8Array> {
+    return new Promise((resolve, reject) => {
+      if (this.closed) {
+        reject(new Error("ws closed"));
+        return;
+      }
+      const pending: PendingRecv = { resolve, reject, timer: null };
+      if (timeoutMs && timeoutMs > 0) {
+        pending.timer = setTimeout(() => {
+          const idx = this.pendingRecvs.indexOf(pending);
+          if (idx !== -1) this.pendingRecvs.splice(idx, 1);
+          reject(new Error(`ws recv timeout after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }
+      this.pendingRecvs.push(pending);
     });
   }
 
   close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.rejectAllPending(new Error("ws closed"));
     this.ws.close();
   }
 }
