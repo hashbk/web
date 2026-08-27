@@ -57,6 +57,8 @@ function getDispatcher(): BridgeDispatcher {
       onVideoFrame: (display: number, frame: unknown) => {
         if (typeof g["onVideoFrame"] === "function") {
           (g["onVideoFrame"] as (d: number, f: unknown) => void)(display, frame);
+        } else {
+          (frame as { close?: () => void }).close?.();
         }
       },
     };
