@@ -31,10 +31,18 @@ export class WsTransport {
 
   static connect(url: string): Promise<WsTransport> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(url);
+      let wsUrl = url;
+      if (
+        typeof globalThis.location !== "undefined" &&
+        globalThis.location.protocol === "https:" &&
+        wsUrl.startsWith("ws://")
+      ) {
+        wsUrl = "wss://" + wsUrl.slice(5);
+      }
+      const ws = new WebSocket(wsUrl);
       ws.binaryType = "arraybuffer";
       ws.onopen = () => resolve(new WsTransport(ws));
-      ws.onerror = () => reject(new Error(`ws connect failed: ${url}`));
+      ws.onerror = () => reject(new Error(`ws connect failed: ${wsUrl}`));
     });
   }
 
