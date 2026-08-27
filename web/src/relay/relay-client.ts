@@ -3,7 +3,20 @@ import { checkWs } from "../transport/check-ws.js";
 import { WsTransport } from "../transport/ws-transport.js";
 import { createSymmetricKeyMsg, decodeIdPk, getRsPubKey } from "../crypto/handshake.js";
 import { computePassword } from "../crypto/password.js";
-import { APP_VERSION, ConnType, DEFAULT_RS_PUB_KEY } from "../constants.js";
+import { APP_VERSION, ConnType, DEFAULT_RS_PUB_KEY, RELAY_PORT } from "../constants.js";
+
+function ensureRelayPort(endpoint: string): string {
+  if (!endpoint) return endpoint;
+  const s = endpoint.replace(/^[a-z]+:\/\//i, "");
+  if (s.startsWith("[")) {
+    const idx = s.indexOf("]");
+    if (idx !== -1 && s.slice(idx + 1).startsWith(":")) return endpoint;
+    return `${endpoint}:${RELAY_PORT}`;
+  }
+  const lastColon = s.lastIndexOf(":");
+  if (lastColon === -1) return `${endpoint}:${RELAY_PORT}`;
+  return endpoint;
+}
 
 export interface RelayConfig {
   apiServer?: string;
@@ -39,7 +52,7 @@ export class RelayClient {
     peerId: string,
     connType: ConnType,
   ): Promise<void> {
-    const wsUrl = checkWs(relayServer, { apiServer: this.config.apiServer });
+    const wsUrl = checkWs(ensureRelayPort(relayServer), { apiServer: this.config.apiServer });
     this.transport = await WsTransport.connect(wsUrl);
 
     const req = hbb.RendezvousMessage.create({
