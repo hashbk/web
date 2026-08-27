@@ -10,7 +10,10 @@ import {
   setAllOptions,
   getUserDefaultOption,
   setUserDefaultOption,
+  deriveApiServer,
 } from "./config/option-store.js";
+
+declare const __BUILD_DATE__: string | undefined;
 
 const g = globalThis as unknown as Record<string, unknown>;
 
@@ -113,7 +116,7 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
       case "uuid":
         return "";
       case "api_server":
-        return "";
+        return deriveApiServer();
       case "image_quality":
         return "balanced";
       case "langs":
@@ -133,7 +136,7 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
       case "main_display":
         return "";
       case "build_date":
-        return "";
+        return typeof __BUILD_DATE__ === "string" ? __BUILD_DATE__ : "";
       case "resolve_avatar_url":
         return arg;
       default:

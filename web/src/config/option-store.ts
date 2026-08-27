@@ -1,5 +1,9 @@
+import { RENDEZVOUS_PORT } from "../constants.js";
+import { getLocalOption } from "../i18n/translate.js";
+
 const OPTION_PREFIX = "rustdesk:option:";
 const USER_DEFAULT_PREFIX = "rustdesk:ud:";
+const DEFAULT_API_SERVER = "https://admin.rustdesk.com";
 
 const USER_DEFAULT_DEFAULTS: Record<string, string> = {
   "view_style": "original",
@@ -83,4 +87,50 @@ export function setUserDefaultOption(key: string, value: string): void {
   } else {
     localStorage.setItem(USER_DEFAULT_PREFIX + key, value);
   }
+}
+
+function increasePort(endpoint: string, delta: number): string {
+  const s = endpoint.replace(/^[a-z]+:\/\//i, "");
+  if (s.startsWith("[")) {
+    const idx = s.indexOf("]");
+    const host = s.slice(0, idx + 1);
+    const port = parseInt(s.slice(idx + 2), 10);
+    if (Number.isNaN(port)) return endpoint;
+    return `${host}:${port + delta}`;
+  }
+  const i = s.lastIndexOf(":");
+  if (i < 0) return endpoint;
+  const host = s.slice(0, i);
+  const port = parseInt(s.slice(i + 1), 10);
+  if (Number.isNaN(port)) return endpoint;
+  return `${host}:${port + delta}`;
+}
+
+export function deriveApiServer(): string {
+  const api = getOption("api-server");
+  let res: string;
+  if (api) {
+    res = api;
+  } else {
+    const custom = getOption("custom-rendezvous-server");
+    if (custom) {
+      const increased = increasePort(custom, -2);
+      res = increased === custom
+        ? `http://${custom}:${RENDEZVOUS_PORT - 2}`
+        : `http://${increased}`;
+    } else {
+      res = DEFAULT_API_SERVER;
+    }
+  }
+  while (res.endsWith("/")) {
+    res = res.slice(0, -1);
+  }
+  if (
+    res.startsWith("https") &&
+    res.endsWith(":21114") &&
+    getLocalOption("allow-https-21114") !== "Y"
+  ) {
+    res = res.replace(":21114", "");
+  }
+  return res;
 }
