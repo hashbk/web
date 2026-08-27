@@ -30,7 +30,9 @@ export interface BridgeConfig extends SessionConfig {
 interface SessionEntry {
   manager: SessionManager;
   peerId: string;
+  password: string;
   connected: boolean;
+  connecting: boolean;
   fileTransfer: FileTransferManager;
   localFs: LocalFileSystem;
 }
@@ -44,7 +46,20 @@ export class BridgeDispatcher {
   async setByName(name: string, value: string): Promise<string> {
     switch (name) {
       case "session_add_sync": {
-        const args = JSON.parse(value) as { id?: string; peer?: string };
+        const args = JSON.parse(value) as {
+          id?: string;
+          peer?: string;
+          password?: string;
+          is_shared_password?: boolean;
+          isFileTransfer?: boolean;
+          isViewCamera?: boolean;
+          isPortForward?: boolean;
+          isRdp?: boolean;
+          isTerminal?: boolean;
+          switchUuid?: string;
+          forceRelay?: boolean;
+          connToken?: string;
+        };
         const id = args.id ?? "";
         const rendezvousServer = deriveRendezvousServer();
         const manager = new SessionManager({
@@ -64,7 +79,9 @@ export class BridgeDispatcher {
         this.sessions.set(id, {
           manager,
           peerId: id,
+          password: args.password ?? "",
           connected: false,
+          connecting: false,
           fileTransfer,
           localFs,
         });
@@ -72,6 +89,24 @@ export class BridgeDispatcher {
         return JSON.stringify({ id });
       }
       case "session_start": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "";
+        if (entry.connecting || entry.connected) return "";
+        entry.connecting = true;
+        void this.startSessionConnection(entry).catch((err) => {
+          console.error("session_start failed:", err);
+          entry.connecting = false;
+          const msg = err instanceof Error ? err.message : String(err);
+          this.config.onGlobalEvent?.(
+            JSON.stringify({
+              name: "msgbox",
+              type: "error",
+              title: "Connection Error",
+              text: msg,
+              link: "",
+            }),
+          );
+        });
         return "";
       }
       case "login": {
@@ -83,27 +118,11 @@ export class BridgeDispatcher {
         };
         const entry = this.getCurrentSessionEntry();
         if (!entry) throw new Error("login: no active session");
-        const peerInfo = await entry.manager.connect({
-          peerId: entry.peerId,
-          password: args.password ?? "",
-          myId: "",
-          myName: "web",
-          myPlatform: "Web",
-          connType: ConnType.DEFAULT_CONN,
-        });
+        const peerInfo = await entry.manager.login(args.password ?? "");
         entry.connected = true;
+        entry.connecting = false;
         this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
-        const transport = entry.manager.getRelayTransport();
-        if (transport) {
-          entry.fileTransfer = new FileTransferManager({
-            transport,
-            localFs: entry.localFs,
-            onGlobalEvent: this.config.onGlobalEvent,
-          });
-        }
-        entry.manager.setFileResponseHandler((fr) => {
-          entry.fileTransfer.handleFileResponse(fr);
-        });
+        this.setupFileTransfer(entry);
         return JSON.stringify(peerInfo);
       }
       case "session_close": {
@@ -379,6 +398,49 @@ export class BridgeDispatcher {
     const id = this.currentSessionId;
     if (!id) return null;
     return this.sessions.get(id) ?? null;
+  }
+
+  private async startSessionConnection(entry: SessionEntry): Promise<void> {
+    await entry.manager.startConnection({
+      peerId: entry.peerId,
+      password: entry.password,
+      myId: "",
+      myName: "web",
+      myPlatform: "Web",
+      connType: ConnType.DEFAULT_CONN,
+    });
+
+    if (entry.password) {
+      const peerInfo = await entry.manager.login(entry.password);
+      entry.connected = true;
+      entry.connecting = false;
+      this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
+      this.setupFileTransfer(entry);
+    } else {
+      this.config.onGlobalEvent?.(
+        JSON.stringify({
+          name: "msgbox",
+          type: "input-password",
+          title: "Password Required",
+          text: "",
+          link: "",
+        }),
+      );
+    }
+  }
+
+  private setupFileTransfer(entry: SessionEntry): void {
+    const transport = entry.manager.getRelayTransport();
+    if (transport) {
+      entry.fileTransfer = new FileTransferManager({
+        transport,
+        localFs: entry.localFs,
+        onGlobalEvent: this.config.onGlobalEvent,
+      });
+    }
+    entry.manager.setFileResponseHandler((fr) => {
+      entry.fileTransfer.handleFileResponse(fr);
+    });
   }
 
   private getCurrentTransport() {

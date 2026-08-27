@@ -1,7 +1,7 @@
 import { RendezvousClient } from "../rendezvous/rendezvous-client.js";
 import type { RendezvousConfig } from "../rendezvous/rendezvous-client.js";
 import { RelayClient } from "../relay/relay-client.js";
-import type { LoginParams, RelayConfig } from "../relay/relay-client.js";
+import type { RelayConfig } from "../relay/relay-client.js";
 import { initSodium } from "../crypto/sodium.js";
 import { ConnType } from "../constants.js";
 import { VideoDecoderManager } from "../video/video-decoder.js";
@@ -37,6 +37,9 @@ export class SessionManager {
   private videoDecoder: VideoDecoderManager;
   private dispatcher: MessageDispatcher | null = null;
   private onGlobalEvent?: (json: string) => void;
+  private connectParams: ConnectParams | null = null;
+  private sessionId: number = 0;
+  private hash: { salt: string; challenge: string } | null = null;
 
   constructor(config: SessionConfig) {
     this.onGlobalEvent = config.onGlobalEvent;
@@ -65,7 +68,7 @@ export class SessionManager {
     });
   }
 
-  async connect(params: ConnectParams): Promise<hbb.IPeerInfo> {
+  async startConnection(params: ConnectParams): Promise<{ salt: string; challenge: string }> {
     await initSodium();
     const connType = params.connType ?? ConnType.DEFAULT_CONN;
 
@@ -87,20 +90,30 @@ export class SessionManager {
       buildConnectionReadyEventJson(isSecured, false, ""),
     );
 
-    const sessionId = Math.floor(Math.random() * 0xffffffff);
-    const loginParams: LoginParams = {
-      peerId: params.peerId,
-      password: params.password,
-      myId: params.myId,
-      myName: params.myName,
-      myPlatform: params.myPlatform,
+    this.connectParams = params;
+    this.sessionId = Math.floor(Math.random() * 0xffffffff);
+
+    this.hash = await this.relay.recvHash();
+    return this.hash;
+  }
+
+  async login(password: string): Promise<hbb.IPeerInfo> {
+    if (!this.connectParams) throw new Error("not connected");
+    if (!this.hash) throw new Error("no hash challenge");
+    const connType = this.connectParams.connType ?? ConnType.DEFAULT_CONN;
+    const peerInfo = await this.relay.login({
+      peerId: this.connectParams.peerId,
+      password,
+      myId: this.connectParams.myId,
+      myName: this.connectParams.myName,
+      myPlatform: this.connectParams.myPlatform,
       connType,
-      sessionId,
-    };
-    const peerInfo = await this.relay.login(loginParams);
+      sessionId: this.sessionId,
+      salt: this.hash.salt,
+      challenge: this.hash.challenge,
+    });
 
     this.installMessageDispatcher();
-
     return peerInfo;
   }
 
