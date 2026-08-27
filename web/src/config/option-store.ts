@@ -143,3 +143,28 @@ export function deriveRendezvousServer(): string {
   if (host.includes(":")) return host;
   return `${host}:${RENDEZVOUS_PORT}`;
 }
+
+const PEER_OPTION_PREFIX = "rustdesk:peer:";
+
+export function getPeerOption(peerId: string, name: string): string {
+  if (!hasLocalStorage()) return "";
+  return localStorage.getItem(`${PEER_OPTION_PREFIX}${peerId}:option:${name}`) || "";
+}
+
+export function setPeerOption(peerId: string, name: string, value: string): void {
+  if (!hasLocalStorage()) return;
+  const key = `${PEER_OPTION_PREFIX}${peerId}:option:${name}`;
+  if (value === "") {
+    localStorage.removeItem(key);
+  } else {
+    localStorage.setItem(key, value);
+  }
+}
+
+export function getPeerToggleOption(peerId: string, name: string): boolean {
+  return getPeerOption(peerId, name) === "Y";
+}
+
+export function setPeerToggleOption(peerId: string, name: string, enabled: boolean): void {
+  setPeerOption(peerId, name, enabled ? "Y" : "");
+}
