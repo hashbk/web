@@ -128,6 +128,7 @@ export class MessageDispatcher {
       return;
     }
     if (msg.peerInfo) {
+      this.updateDimensionsFromPeerInfo(msg.peerInfo);
       this.callbacks.onGlobalEvent?.(buildPeerInfoEventJson(msg.peerInfo));
       this.callbacks.onPeerInfo?.(msg.peerInfo);
       return;
@@ -184,6 +185,19 @@ export class MessageDispatcher {
     this.callbacks.onGlobalEvent?.(json);
   }
 
+  private updateDimensionsFromPeerInfo(pi: hbb.IPeerInfo): void {
+    const displays = pi.displays ?? [];
+    const idx = pi.currentDisplay ?? 0;
+    const d = displays[idx];
+    if (d) {
+      const w = d.width ?? 0;
+      const h = d.height ?? 0;
+      if (w > 0 && h > 0) {
+        this.videoDecoder.setDimensions(w, h);
+      }
+    }
+  }
+
   private handleClipboard(clipboard: hbb.IClipboard): void {
     const content = clipboard.content as Uint8Array | undefined;
     if (content && content.length > 0) {
@@ -200,6 +214,11 @@ export class MessageDispatcher {
 
     if (misc.switchDisplay) {
       const sd = misc.switchDisplay;
+      const w = sd.width ?? 0;
+      const h = sd.height ?? 0;
+      if (w > 0 && h > 0) {
+        this.videoDecoder.setDimensions(w, h);
+      }
       this.callbacks.onGlobalEvent?.(
         JSON.stringify({
           name: "switch_display",
@@ -233,16 +252,6 @@ export class MessageDispatcher {
       return;
     }
 
-    if (misc.audioFormat) {
-      this.callbacks.onGlobalEvent?.(
-        JSON.stringify({
-          name: "audio_format",
-          channels: String(misc.audioFormat.channels ?? 0),
-          sampleRate: String(misc.audioFormat.sampleRate ?? 0),
-        }),
-      );
-      return;
-    }
   }
 }
 
