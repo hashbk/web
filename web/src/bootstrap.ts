@@ -95,6 +95,36 @@ g["setByName"] = (name: string, ...args: unknown[]): string => {
       setAllOptions(value);
       return "";
     }
+    if (name === "save_ab") {
+      setOption("ab-cache", value);
+      return "";
+    }
+    if (name === "clear_ab") {
+      setOption("ab-cache", "");
+      return "";
+    }
+    if (name === "load_ab") {
+      const cache = getOption("ab-cache");
+      if (typeof g["onLoadAbFinished"] === "function") {
+        (g["onLoadAbFinished"] as (s: string) => void)(cache);
+      }
+      return "";
+    }
+    if (name === "save_group") {
+      setOption("group-cache", value);
+      return "";
+    }
+    if (name === "clear_group") {
+      setOption("group-cache", "");
+      return "";
+    }
+    if (name === "load_group") {
+      const cache = getOption("group-cache");
+      if (typeof g["onLoadGroupFinished"] === "function") {
+        (g["onLoadGroupFinished"] as (s: string) => void)(cache);
+      }
+      return "";
+    }
     const d = getDispatcher();
     void d.setByName(name, value).catch((err) => {
       console.error(`setByName("${name}") failed:`, err);
