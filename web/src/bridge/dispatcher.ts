@@ -100,7 +100,7 @@ export class BridgeDispatcher {
         return JSON.stringify(peerInfo);
       }
       case "session_close": {
-        const args = JSON.parse(value) as { id?: string };
+        const args = value ? (JSON.parse(value) as { id?: string }) : {};
         const entry = args.id ? this.sessions.get(args.id) : undefined;
         entry?.manager.close();
         if (args.id) this.sessions.delete(args.id);
