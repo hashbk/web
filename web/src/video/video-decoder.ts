@@ -212,8 +212,7 @@ export class VideoDecoderManager {
       this.decodeH264Frames(display, videoFrame.h264s.frames);
     } else if (videoFrame.h265s?.frames) {
       this.decodeH265Frames(display, videoFrame.h265s.frames);
-    } else if (videoFrame.rgb) {
-      this.handleRgb(display, videoFrame.rgb as Uint8Array);
+
     }
   }
 
@@ -378,9 +377,6 @@ export class VideoDecoderManager {
     }
   }
 
-  private handleRgb(display: number, rgb: Uint8Array): void {
-    this.callbacks.onRgba?.(display, rgb);
-  }
 
   private closeDecoder(display: number): void {
     const entry = this.decoders.get(display);

@@ -156,17 +156,14 @@ describe("h264CodecString", () => {
 });
 
 describe("VideoDecoderManager", () => {
-  it("handles RGB frames via onRgba callback", () => {
+  it("ignores RGB frames (proto RGB has no data field)", () => {
     const received: Array<{ display: number; rgba: Uint8Array }> = [];
     const manager = new VideoDecoderManager({
       onRgba: (display, rgba) => received.push({ display, rgba }),
     });
-    const rgbData = new Uint8Array([1, 2, 3, 4]);
-    const vf = hbb.VideoFrame.create({ rgb: rgbData, display: 0 });
+    const vf = hbb.VideoFrame.create({ rgb: { compress: false }, display: 0 });
     manager.decodeVideoFrame(vf);
-    expect(received.length).toBe(1);
-    expect(received[0].display).toBe(0);
-    expect(Array.from(received[0].rgba)).toEqual([1, 2, 3, 4]);
+    expect(received.length).toBe(0);
     manager.close();
   });
 
