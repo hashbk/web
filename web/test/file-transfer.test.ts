@@ -387,4 +387,101 @@ describe("FileTransferManager", () => {
     ft.handleFileResponse({});
     expect(events.length).toBe(0);
   });
+
+  it("readRemoteDir retries when no response within retry interval", () => {
+    vi.useFakeTimers();
+    const { config, transport } = makeConfig();
+    const ft = new FileTransferManager(config);
+    ft.readRemoteDir("/remote", true);
+    expect(transport.sent.length).toBe(1);
+    vi.advanceTimersByTime(800);
+    expect(transport.sent.length).toBe(2);
+    vi.advanceTimersByTime(800);
+    expect(transport.sent.length).toBe(3);
+    vi.advanceTimersByTime(800);
+    expect(transport.sent.length).toBe(3);
+    vi.useRealTimers();
+  });
+
+  it("readRemoteDir stops retrying after response received", () => {
+    vi.useFakeTimers();
+    const { config, transport } = makeConfig();
+    const ft = new FileTransferManager(config);
+    ft.readRemoteDir("/remote", true);
+    expect(transport.sent.length).toBe(1);
+    const fr: hbb.IFileResponse = {
+      dir: { id: 0, path: "/remote", entries: [] },
+    };
+    ft.handleFileResponse(fr);
+    vi.advanceTimersByTime(3000);
+    expect(transport.sent.length).toBe(1);
+    vi.useRealTimers();
+  });
+
+  it("readRemoteDir retry sends same path and includeHidden", () => {
+    vi.useFakeTimers();
+    const { config, transport } = makeConfig();
+    const ft = new FileTransferManager(config);
+    ft.readRemoteDir("/data", false);
+    vi.advanceTimersByTime(800);
+    expect(transport.sent.length).toBe(2);
+    const action1 = decodeFileAction(transport.sent[0]);
+    const action2 = decodeFileAction(transport.sent[1]);
+    expect(action1.readDir!.path).toBe("/data");
+    expect(action2.readDir!.path).toBe("/data");
+    expect(action1.readDir!.includeHidden).toBe(false);
+    expect(action2.readDir!.includeHidden).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("readRemoteDir handles multiple paths independently", () => {
+    vi.useFakeTimers();
+    const { config, transport } = makeConfig();
+    const ft = new FileTransferManager(config);
+    ft.readRemoteDir("/dir1", true);
+    ft.readRemoteDir("/dir2", true);
+    expect(transport.sent.length).toBe(2);
+    const fr: hbb.IFileResponse = {
+      dir: { id: 0, path: "/dir1", entries: [] },
+    };
+    ft.handleFileResponse(fr);
+    vi.advanceTimersByTime(800);
+    expect(transport.sent.length).toBe(3);
+    const lastAction = decodeFileAction(transport.sent[2]);
+    expect(lastAction.readDir!.path).toBe("/dir2");
+    vi.useRealTimers();
+  });
+
+  it("destroy clears pending retries and prevents future sends", () => {
+    vi.useFakeTimers();
+    const { config, transport } = makeConfig();
+    const ft = new FileTransferManager(config);
+    ft.readRemoteDir("/remote", true);
+    ft.destroy();
+    vi.advanceTimersByTime(5000);
+    expect(transport.sent.length).toBe(1);
+    ft.readRemoteDir("/other", true);
+    expect(transport.sent.length).toBe(1);
+    vi.useRealTimers();
+  });
+
+  it("handleFileResponse with dir clears pending retry for matching path", () => {
+    vi.useFakeTimers();
+    const events: string[] = [];
+    const { config, transport } = makeConfig(events);
+    const ft = new FileTransferManager(config);
+    ft.readRemoteDir("/match", true);
+    ft.readRemoteDir("/no-match", true);
+    const fr: hbb.IFileResponse = {
+      dir: { id: 0, path: "/match", entries: [] },
+    };
+    ft.handleFileResponse(fr);
+    vi.advanceTimersByTime(800);
+    const paths = transport.sent
+      .slice(2)
+      .map((b) => decodeFileAction(b).readDir!.path);
+    expect(paths).toContain("/no-match");
+    expect(paths).not.toContain("/match");
+    vi.useRealTimers();
+  });
 });

@@ -50,14 +50,66 @@ export interface SendFilesParams {
   isDir: boolean;
 }
 
+interface PendingReadDir {
+  includeHidden: boolean;
+  retries: number;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const READ_DIR_RETRY_MS = 800;
+const READ_DIR_MAX_RETRIES = 2;
+
 export class FileTransferManager {
   private jobs = new Map<number, JobProgress>();
+  private pendingReadDirs = new Map<string, PendingReadDir>();
+  private destroyed = false;
 
 
   constructor(private config: FileTransferConfig) {}
 
   readRemoteDir(path: string, includeHidden: boolean): void {
+    this.sendReadDirWithRetry(path, includeHidden, 0);
+  }
+
+  private sendReadDirWithRetry(
+    path: string,
+    includeHidden: boolean,
+    retry: number,
+  ): void {
+    if (this.destroyed) return;
     this.config.transport.send(encodeReadDir(path, includeHidden));
+
+    const existing = this.pendingReadDirs.get(path);
+    if (existing) clearTimeout(existing.timer);
+
+    const timer = setTimeout(() => {
+      if (this.destroyed) return;
+      const pending = this.pendingReadDirs.get(path);
+      if (!pending) return;
+      if (retry < READ_DIR_MAX_RETRIES) {
+        this.sendReadDirWithRetry(path, includeHidden, retry + 1);
+      } else {
+        this.pendingReadDirs.delete(path);
+      }
+    }, READ_DIR_RETRY_MS);
+
+    this.pendingReadDirs.set(path, { includeHidden, retries: retry, timer });
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    for (const pending of this.pendingReadDirs.values()) {
+      clearTimeout(pending.timer);
+    }
+    this.pendingReadDirs.clear();
+  }
+
+  private clearPendingReadDir(path: string): void {
+    const pending = this.pendingReadDirs.get(path);
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.pendingReadDirs.delete(path);
+    }
   }
 
   async sendFiles(params: SendFilesParams): Promise<void> {
@@ -250,9 +302,11 @@ export class FileTransferManager {
 
   handleFileResponse(fr: hbb.IFileResponse): void {
     if (fr.dir) {
+      const path = fr.dir.path ?? "";
+      this.clearPendingReadDir(path);
       this.emitFileDir(
         fr.dir.id ?? 0,
-        fr.dir.path ?? "",
+        path,
         fr.dir.entries ?? [],
         false,
       );

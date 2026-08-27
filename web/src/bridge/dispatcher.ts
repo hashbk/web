@@ -138,6 +138,7 @@ export class BridgeDispatcher {
       case "session_close": {
         const args = value ? (JSON.parse(value) as { id?: string }) : {};
         const entry = args.id ? this.sessions.get(args.id) : undefined;
+        entry?.fileTransfer.destroy();
         entry?.manager.close();
         if (args.id) this.sessions.delete(args.id);
         return "";
@@ -146,6 +147,7 @@ export class BridgeDispatcher {
         const entry = this.getCurrentSessionEntry();
         if (!entry) return "";
         if (entry.connecting) return "";
+        entry.fileTransfer.destroy();
         entry.manager.close();
         entry.connected = false;
         entry.connecting = true;
