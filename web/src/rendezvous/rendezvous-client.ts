@@ -15,6 +15,42 @@ export interface PunchHoleResult {
   signedIdPk: Uint8Array;
 }
 
+export interface OnlineQueryResult {
+  onlines: string[];
+  offlines: string[];
+}
+
+export function deriveOnlineEndpoint(rendezvousServer: string): string {
+  if (!rendezvousServer) return "";
+  const s = rendezvousServer.replace(/^[a-z]+:\/\//i, "");
+  if (s.startsWith("[")) {
+    const idx = s.indexOf("]");
+    const host = s.slice(0, idx + 1);
+    const port = parseInt(s.slice(idx + 2), 10);
+    return Number.isNaN(port) ? s : `${host}:${port - 1}`;
+  }
+  const i = s.lastIndexOf(":");
+  if (i < 0) return s;
+  const host = s.slice(0, i);
+  const port = parseInt(s.slice(i + 1), 10);
+  return Number.isNaN(port) ? s : `${host}:${port - 1}`;
+}
+
+export function parseOnlineStates(peers: string[], states: Uint8Array): OnlineQueryResult {
+  const onlines: string[] = [];
+  const offlines: string[] = [];
+  for (let i = 0; i < peers.length; i++) {
+    const bit = 0x01 << (7 - (i % 8));
+    const byte = states[Math.floor(i / 8)] ?? 0;
+    if ((byte & bit) === bit) {
+      onlines.push(peers[i]);
+    } else {
+      offlines.push(peers[i]);
+    }
+  }
+  return { onlines, offlines };
+}
+
 export class RendezvousClient {
   constructor(private config: RendezvousConfig) {}
 
@@ -66,5 +102,27 @@ export class RendezvousClient {
       }
     }
     throw new Error("rendezvous: unexpected response (no relay_response/punch_hole_response)");
+  }
+
+  async queryOnlines(myId: string, peers: string[]): Promise<OnlineQueryResult> {
+    if (peers.length === 0) return { onlines: [], offlines: [] };
+    const onlineEndpoint = deriveOnlineEndpoint(this.config.rendezvousServer);
+    const wsUrl = checkWs(onlineEndpoint, { apiServer: this.config.apiServer });
+    const transport = await WsTransport.connect(wsUrl);
+    try {
+      const req = hbb.RendezvousMessage.create({
+        onlineRequest: { id: myId, peers },
+      });
+      transport.send(hbb.RendezvousMessage.encode(req).finish());
+      const respBytes = await transport.recv();
+      const resp = hbb.RendezvousMessage.decode(respBytes);
+      if (!resp.onlineResponse) {
+        throw new Error("rendezvous: no online_response");
+      }
+      const states = (resp.onlineResponse.states as Uint8Array) ?? new Uint8Array();
+      return parseOnlineStates(peers, states);
+    } finally {
+      transport.close();
+    }
   }
 }
