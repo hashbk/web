@@ -77,6 +77,7 @@ export interface MessageDispatcherCallbacks {
 
 export class MessageDispatcher {
   private videoDecoder: VideoDecoderManager;
+  private loadedCursorIds = new Set<number>();
 
   constructor(
     videoDecoder: VideoDecoderManager,
@@ -181,6 +182,7 @@ export class MessageDispatcher {
       height,
       colors,
     );
+    this.loadedCursorIds.add(cursorData.id as number);
     this.callbacks.onGlobalEvent?.(json);
   }
 
@@ -190,6 +192,7 @@ export class MessageDispatcher {
   }
 
   private handleCursorId(id: number): void {
+    if (!this.loadedCursorIds.has(id)) return;
     const json = cursorIdToJson(id);
     this.callbacks.onGlobalEvent?.(json);
   }
