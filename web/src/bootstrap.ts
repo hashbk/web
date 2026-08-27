@@ -228,6 +228,8 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
       }
       case "load_recent_peers_sync":
         return "[]";
+      case "alternative_codecs":
+        return JSON.stringify({ vp8: false, av1: false, h264: false, h265: false });
       case "main_display":
         return "";
       case "build_date":

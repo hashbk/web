@@ -329,6 +329,9 @@ export class VideoDecoderManager {
     }
 
     if (!entry.configured) {
+      if (this.width <= 0 || this.height <= 0) {
+        return null;
+      }
       const config: Record<string, unknown> = {
         codec,
         codedWidth: this.width,
