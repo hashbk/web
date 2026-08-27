@@ -57,7 +57,7 @@ jobs:
         working-directory: web
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rustdesk-web-bundle
           path: web/dist/rustdesk-web.js
