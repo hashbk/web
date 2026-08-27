@@ -51,6 +51,43 @@ export function parseOnlineStates(peers: string[], states: Uint8Array): OnlineQu
   return { onlines, offlines };
 }
 
+function punchHoleFailureMsg(failure: number): string {
+  switch (failure) {
+    case 0: return "ID does not exist";
+    case 2: return "Remote desktop is offline";
+    case 3: return "Key mismatch";
+    case 4: return "Key overuse";
+    default: return `punch hole failure (${failure})`;
+  }
+}
+
+function detectRendezvousMsgType(msg: hbb.RendezvousMessage): string {
+  if (msg.punchHoleRequest) return "punch_hole_request";
+  if (msg.punchHoleResponse) return "punch_hole_response";
+  if (msg.registerPeer) return "register_peer";
+  if (msg.registerPk) return "register_pk";
+  if (msg.registerPkResponse) return "register_pk_response";
+  if (msg.relayResponse) return "relay_response";
+  if (msg.requestRelay) return "request_relay";
+  if (msg.onlineRequest) return "online_request";
+  if (msg.onlineResponse) return "online_response";
+  if (msg.configureUpdate) return "configure_update";
+  if (msg.softwareUpdate) return "software_update";
+  if (msg.testNatRequest) return "test_nat_request";
+  if (msg.testNatResponse) return "test_nat_response";
+  if (msg.keyExchange) return "key_exchange";
+  if (msg.registerPeerResponse) return "register_peer_response";
+  if (msg.punchHole) return "punch_hole";
+  if (msg.punchHoleSent) return "punch_hole_sent";
+  if (msg.fetchLocalAddr) return "fetch_local_addr";
+  if (msg.localAddr) return "local_addr";
+  if (msg.peerDiscovery) return "peer_discovery";
+  if (msg.hc) return "health_check";
+  if (msg.httpProxyRequest) return "http_proxy_request";
+  if (msg.httpProxyResponse) return "http_proxy_response";
+  return "unknown/empty";
+}
+
 export class RendezvousClient {
   constructor(private config: RendezvousConfig) {}
 
@@ -115,16 +152,25 @@ export class RendezvousClient {
           };
         }
         if (resp.punchHoleResponse) {
-          const sa = resp.punchHoleResponse.socketAddr as Uint8Array;
+          const ph = resp.punchHoleResponse;
+          const sa = ph.socketAddr as Uint8Array;
           if (sa && sa.length > 0) {
             return {
-              relayServer: resp.punchHoleResponse.relayServer ?? "",
+              relayServer: ph.relayServer ?? "",
               uuid: "",
-              signedIdPk: resp.punchHoleResponse.pk as Uint8Array,
+              signedIdPk: ph.pk as Uint8Array,
             };
           }
+          const otherFailure = ph.otherFailure ?? "";
+          if (otherFailure) {
+            throw new Error(`rendezvous: ${otherFailure}`);
+          }
+          const failure = ph.failure ?? 0;
+          const failureMsg = punchHoleFailureMsg(failure);
+          throw new Error(`rendezvous: ${failureMsg}`);
         }
-        throw new Error("rendezvous: unexpected response (no relay_response/punch_hole_response)");
+        const msgType = detectRendezvousMsgType(resp);
+        throw new Error(`rendezvous: unexpected response type: ${msgType}`);
       } catch (e) {
         lastErr = e instanceof Error ? e : new Error(String(e));
         try { transport.close(); } catch { /* ignore */ }
