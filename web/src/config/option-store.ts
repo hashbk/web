@@ -1,4 +1,4 @@
-import { RENDEZVOUS_PORT } from "../constants.js";
+import { RENDEZVOUS_PORT, DEFAULT_RS_PUB_KEY } from "../constants.js";
 import { getLocalOption } from "../i18n/translate.js";
 
 const OPTION_PREFIX = "rustdesk:option:";
@@ -142,6 +142,11 @@ export function deriveRendezvousServer(): string {
   const host = custom || DEFAULT_RENDEZVOUS_SERVER;
   if (host.includes(":")) return host;
   return `${host}:${RENDEZVOUS_PORT}`;
+}
+
+export function deriveLicenceKey(): string {
+  const key = getOption("key");
+  return key || DEFAULT_RS_PUB_KEY;
 }
 
 const PEER_OPTION_PREFIX = "rustdesk:peer:";

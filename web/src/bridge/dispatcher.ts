@@ -17,6 +17,7 @@ import type { JobProgress } from "../file/file-transfer.js";
 import { RendezvousClient } from "../rendezvous/rendezvous-client.js";
 import {
   deriveRendezvousServer,
+  deriveLicenceKey,
   getPeerOption,
   setPeerOption,
   getPeerToggleOption,
@@ -68,9 +69,11 @@ export class BridgeDispatcher {
         };
         const id = args.id ?? "";
         const rendezvousServer = deriveRendezvousServer();
+        const licenceKey = deriveLicenceKey();
         const manager = new SessionManager({
           ...this.config,
           rendezvousServer,
+          licenceKey,
           onGlobalEvent: this.config.onGlobalEvent,
           onVideoFrame: this.config.onVideoFrame,
           onRgba: this.config.onRgba,
