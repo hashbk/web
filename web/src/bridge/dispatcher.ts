@@ -74,6 +74,7 @@ export class BridgeDispatcher {
           ...this.config,
           rendezvousServer,
           licenceKey,
+          rsPubKey: licenceKey,
           onGlobalEvent: this.config.onGlobalEvent,
           onVideoFrame: this.config.onVideoFrame,
           onRgba: this.config.onRgba,
