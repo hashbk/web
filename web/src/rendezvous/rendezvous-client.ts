@@ -59,49 +59,68 @@ export class RendezvousClient {
     connType: ConnType,
     token?: string,
   ): Promise<PunchHoleResult> {
-    const wsUrl = checkWs(this.config.rendezvousServer, {
-      apiServer: this.config.apiServer,
-    });
-    const transport = await WsTransport.connect(wsUrl);
+    const maxRetries = 3;
+    let lastErr: Error | null = null;
 
-    const req = hbb.RendezvousMessage.create({
-      punchHoleRequest: {
-        id: peerId,
-        token: token ?? "",
-        natType: NatType.SYMMETRIC,
-        licenceKey: this.config.licenceKey ?? "",
-        connType,
-        version: APP_VERSION,
-        udpPort: 0,
-        forceRelay: true,
-        upnpPort: 0,
-        switchCode: "",
-      },
-    });
-    transport.send(hbb.RendezvousMessage.encode(req).finish());
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const wsUrl = checkWs(this.config.rendezvousServer, {
+        apiServer: this.config.apiServer,
+      });
+      let transport: WsTransport;
+      try {
+        transport = await WsTransport.connect(wsUrl);
+      } catch (e) {
+        lastErr = e instanceof Error ? e : new Error(String(e));
+        continue;
+      }
 
-    const respBytes = await transport.recv();
-    transport.close();
-    const resp = hbb.RendezvousMessage.decode(respBytes);
+      try {
+        const req = hbb.RendezvousMessage.create({
+          punchHoleRequest: {
+            id: peerId,
+            token: token ?? "",
+            natType: NatType.SYMMETRIC,
+            licenceKey: this.config.licenceKey ?? "",
+            connType,
+            version: APP_VERSION,
+            udpPort: 0,
+            forceRelay: true,
+            upnpPort: 0,
+            switchCode: "",
+          },
+        });
+        transport.send(hbb.RendezvousMessage.encode(req).finish());
 
-    if (resp.relayResponse) {
-      return {
-        relayServer: resp.relayResponse.relayServer ?? "",
-        uuid: resp.relayResponse.uuid ?? "",
-        signedIdPk: resp.relayResponse.pk as Uint8Array,
-      };
-    }
-    if (resp.punchHoleResponse) {
-      const sa = resp.punchHoleResponse.socketAddr as Uint8Array;
-      if (sa && sa.length > 0) {
-        return {
-          relayServer: resp.punchHoleResponse.relayServer ?? "",
-          uuid: "",
-          signedIdPk: resp.punchHoleResponse.pk as Uint8Array,
-        };
+        const timeoutMs = attempt * 3000;
+        const respBytes = await transport.recv(timeoutMs);
+        transport.close();
+        const resp = hbb.RendezvousMessage.decode(respBytes);
+
+        if (resp.relayResponse) {
+          return {
+            relayServer: resp.relayResponse.relayServer ?? "",
+            uuid: resp.relayResponse.uuid ?? "",
+            signedIdPk: resp.relayResponse.pk as Uint8Array,
+          };
+        }
+        if (resp.punchHoleResponse) {
+          const sa = resp.punchHoleResponse.socketAddr as Uint8Array;
+          if (sa && sa.length > 0) {
+            return {
+              relayServer: resp.punchHoleResponse.relayServer ?? "",
+              uuid: "",
+              signedIdPk: resp.punchHoleResponse.pk as Uint8Array,
+            };
+          }
+        }
+        throw new Error("rendezvous: unexpected response (no relay_response/punch_hole_response)");
+      } catch (e) {
+        lastErr = e instanceof Error ? e : new Error(String(e));
+        try { transport.close(); } catch { /* ignore */ }
       }
     }
-    throw new Error("rendezvous: unexpected response (no relay_response/punch_hole_response)");
+
+    throw lastErr ?? new Error("rendezvous: all retries failed");
   }
 
   async queryOnlines(myId: string, peers: string[]): Promise<OnlineQueryResult> {
@@ -114,7 +133,7 @@ export class RendezvousClient {
         onlineRequest: { id: myId, peers },
       });
       transport.send(hbb.RendezvousMessage.encode(req).finish());
-      const respBytes = await transport.recv();
+      const respBytes = await transport.recv(6000);
       const resp = hbb.RendezvousMessage.decode(respBytes);
       if (!resp.onlineResponse) {
         throw new Error("rendezvous: no online_response");

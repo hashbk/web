@@ -75,7 +75,7 @@ export class RelayClient {
     const { id, pk: peerSignPk } = decodeIdPk(signedIdPk, rsPk);
     if (id !== peerId) throw new Error(`peer id mismatch: ${id} != ${peerId}`);
 
-    const signedIdBytes = await this.transport.recv();
+    const signedIdBytes = await this.transport.recv(15000);
     const signedIdMsg = hbb.Message.decode(signedIdBytes);
     if (!signedIdMsg.signedId) throw new Error("expected signed_id from peer");
     const decoded = decodeIdPk(
@@ -97,7 +97,7 @@ export class RelayClient {
 
   async login(params: LoginParams): Promise<PeerInfo> {
     if (!this.transport) throw new Error("relay not connected");
-    const hashBytes = await this.transport.recv();
+    const hashBytes = await this.transport.recv(15000);
     const hashMsg = hbb.Message.decode(hashBytes);
     if (!hashMsg.hash) throw new Error("expected hash challenge");
     const password = await computePassword(
@@ -120,7 +120,7 @@ export class RelayClient {
     });
     this.transport.send(hbb.Message.encode(loginMsg).finish());
 
-    const respBytes = await this.transport.recv();
+    const respBytes = await this.transport.recv(15000);
     const respMsg = hbb.Message.decode(respBytes);
     if (respMsg.loginResponse) {
       if (respMsg.loginResponse.error) {

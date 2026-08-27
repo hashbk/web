@@ -19,6 +19,7 @@ const g = globalThis as unknown as Record<string, unknown>;
 
 let dispatcher: BridgeDispatcher | null = null;
 let sodiumReady = false;
+let globalEventSink: ((json: string) => void) | null = null;
 
 initSodium()
   .then(() => {
@@ -30,14 +31,16 @@ initSodium()
 
 function getDispatcher(): BridgeDispatcher {
   if (!dispatcher) {
+    const onGlobalEvent = (json: string) => {
+      if (typeof g["onGlobalEvent"] === "function") {
+        (g["onGlobalEvent"] as (msg: string) => void)(json);
+      }
+    };
+    globalEventSink = onGlobalEvent;
     const config: BridgeConfig = {
       rendezvousServer: "",
       rsPubKey: DEFAULT_RS_PUB_KEY,
-      onGlobalEvent: (json: string) => {
-        if (typeof g["onGlobalEvent"] === "function") {
-          (g["onGlobalEvent"] as (msg: string) => void)(json);
-        }
-      },
+      onGlobalEvent,
       onRegisteredEvent: (json: string) => {
         if (typeof g["onRegisteredEvent"] === "function") {
           (g["onRegisteredEvent"] as (msg: string) => void)(json);
@@ -85,6 +88,15 @@ g["setByName"] = (name: string, ...args: unknown[]): string => {
     const d = getDispatcher();
     void d.setByName(name, value).catch((err) => {
       console.error(`setByName("${name}") failed:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      globalEventSink?.(
+        JSON.stringify({
+          name: "msgbox",
+          type: "error",
+          title: "Connection Error",
+          text: msg,
+        }),
+      );
     });
   } catch (err) {
     console.error(`setByName("${name}") failed:`, err);
