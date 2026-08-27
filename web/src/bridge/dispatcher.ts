@@ -19,7 +19,9 @@ import { deriveRendezvousServer } from "../config/option-store.js";
 
 export interface BridgeConfig extends SessionConfig {
   cursorElement?: HTMLElement;
+  cursorElements?: HTMLElement;
   onGlobalEvent?: (json: string) => void;
+  onRegisteredEvent?: (json: string) => void;
   onVideoFrame?: (display: number, frame: unknown) => void;
   onRgba?: (display: number, rgba: Uint8Array) => void;
 }
@@ -313,7 +315,7 @@ export class BridgeDispatcher {
               apiServer: this.config.apiServer,
             });
             const { onlines, offlines } = await client.queryOnlines("", ids);
-            this.config.onGlobalEvent?.(
+            this.config.onRegisteredEvent?.(
               JSON.stringify({
                 name: "callback_query_onlines",
                 onlines: onlines.join(","),

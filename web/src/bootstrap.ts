@@ -38,6 +38,11 @@ function getDispatcher(): BridgeDispatcher {
           (g["onGlobalEvent"] as (msg: string) => void)(json);
         }
       },
+      onRegisteredEvent: (json: string) => {
+        if (typeof g["onRegisteredEvent"] === "function") {
+          (g["onRegisteredEvent"] as (msg: string) => void)(json);
+        }
+      },
       onRgba: (display: number, rgba: Uint8Array) => {
         if (typeof g["onRgba"] === "function") {
           (g["onRgba"] as (d: number, r: Uint8Array) => void)(display, rgba);
