@@ -11,6 +11,20 @@ function isWsEndpoint(endpoint: string): boolean {
   return endpoint.startsWith("ws://") || endpoint.startsWith("wss://");
 }
 
+function isHttpsPage(): boolean {
+  return (
+    typeof globalThis.location !== "undefined" &&
+    globalThis.location.protocol === "https:"
+  );
+}
+
+function enforceProtocol(url: string): string {
+  if (isHttpsPage() && url.startsWith("ws://")) {
+    return "wss://" + url.slice(5);
+  }
+  return url;
+}
+
 function isIpHost(host: string): boolean {
   if (host.startsWith("[")) return true;
   return /^(\d{1,3}\.){3}\d{1,3}$/.test(host);
@@ -30,7 +44,12 @@ function splitHostPort(endpoint: string): { host: string; port: number } {
 
 export function checkWs(endpoint: string, opts: CheckWsOptions = {}): string {
   const useWs = opts.useWs ?? true;
-  if (!useWs || endpoint === "" || isWsEndpoint(endpoint)) return endpoint;
+  if (!useWs || endpoint === "") return endpoint;
+
+  if (isWsEndpoint(endpoint)) {
+    return enforceProtocol(endpoint);
+  }
+
   const { host, port } = splitHostPort(endpoint);
   const rendezvousPort = opts.rendezvousPort ?? RENDEZVOUS_PORT;
   const relayPort = opts.relayPort ?? RELAY_PORT;
@@ -59,13 +78,7 @@ export function checkWs(endpoint: string, opts: CheckWsOptions = {}): string {
   } else {
     address = `${host}:${dstPort}`;
   }
-  const isHttpsPage =
-    typeof globalThis.location !== "undefined" &&
-    globalThis.location.protocol === "https:";
-  const protocol = isDomain
-    ? (isHttpsPage || opts.apiServer?.startsWith("https")) ? "wss" : "ws"
-    : isHttpsPage ? "wss" : "ws";
-  return `${protocol}://${address}`;
+  return `wss://${address}`;
 }
 
 export function isWsEndpointUrl(endpoint: string): boolean {
