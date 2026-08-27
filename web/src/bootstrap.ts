@@ -11,6 +11,9 @@ import {
   getUserDefaultOption,
   setUserDefaultOption,
   deriveApiServer,
+  getPeerOption,
+  setPeerOption,
+  getPeerToggleOption,
 } from "./config/option-store.js";
 
 declare const __BUILD_DATE__: string | undefined;
@@ -81,6 +84,13 @@ g["setByName"] = (name: string, ...args: unknown[]): string => {
       }
       return "";
     }
+    if (name === "option:peer") {
+      const opts = JSON.parse(value) as { id?: string; name?: string; value?: string };
+      if (opts.id && opts.name) {
+        setPeerOption(opts.id, opts.name, opts.value ?? "");
+      }
+      return "";
+    }
     if (name === "options") {
       setAllOptions(value);
       return "";
@@ -134,8 +144,14 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
         return "";
       case "api_server":
         return deriveApiServer();
-      case "image_quality":
+      case "image_quality": {
+        const d = getDispatcher();
+        const peerId = d.getCurrentPeerId();
+        if (peerId) {
+          return getPeerOption(peerId, "image_quality") || "balanced";
+        }
         return "balanced";
+      }
       case "langs":
         return getLangs();
       case "translate": {
@@ -148,6 +164,33 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
         return getOption(arg);
       case "option:user:default":
         return getUserDefaultOption(arg);
+      case "option:peer": {
+        try {
+          const opts = JSON.parse(arg) as { id?: string; name?: string };
+          if (opts.id && opts.name) {
+            return getPeerOption(opts.id, opts.name);
+          }
+        } catch {
+          return "";
+        }
+        return "";
+      }
+      case "option:session": {
+        const d = getDispatcher();
+        const peerId = d.getCurrentPeerId();
+        if (peerId) {
+          return getPeerOption(peerId, arg);
+        }
+        return "";
+      }
+      case "option:toggle": {
+        const d = getDispatcher();
+        const peerId = d.getCurrentPeerId();
+        if (peerId) {
+          return getPeerToggleOption(peerId, arg) ? "true" : "false";
+        }
+        return "false";
+      }
       case "load_recent_peers_sync":
         return "[]";
       case "main_display":

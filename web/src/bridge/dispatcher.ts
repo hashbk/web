@@ -15,7 +15,13 @@ import { LocalFileSystem } from "../file/local-fs.js";
 import { FileTransferManager } from "../file/file-transfer.js";
 import type { JobProgress } from "../file/file-transfer.js";
 import { RendezvousClient } from "../rendezvous/rendezvous-client.js";
-import { deriveRendezvousServer } from "../config/option-store.js";
+import {
+  deriveRendezvousServer,
+  getPeerOption,
+  setPeerOption,
+  getPeerToggleOption,
+  setPeerToggleOption,
+} from "../config/option-store.js";
 import { buildPeerInfoEventJson } from "../session/message-dispatcher.js";
 
 export interface BridgeConfig extends SessionConfig {
@@ -130,6 +136,80 @@ export class BridgeDispatcher {
         const entry = args.id ? this.sessions.get(args.id) : undefined;
         entry?.manager.close();
         if (args.id) this.sessions.delete(args.id);
+        return "";
+      }
+      case "reconnect": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "";
+        if (entry.connecting) return "";
+        entry.manager.close();
+        entry.connected = false;
+        entry.connecting = true;
+        void this.startSessionConnection(entry).catch((err) => {
+          console.error("reconnect failed:", err);
+          entry.connecting = false;
+          const msg = err instanceof Error ? err.message : String(err);
+          this.config.onGlobalEvent?.(
+            JSON.stringify({
+              name: "msgbox",
+              type: "error",
+              title: "Connection Error",
+              text: msg,
+              link: "",
+            }),
+          );
+        });
+        return "";
+      }
+      case "refresh": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const msg = hbb.Message.create({ misc: { refreshVideo: true } });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "option:session": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "";
+        const args = JSON.parse(value) as { name?: string; value?: string };
+        if (args.name) {
+          setPeerOption(entry.peerId, args.name, args.value ?? "");
+        }
+        return "";
+      }
+      case "option:toggle": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "";
+        this.handleToggleOption(entry, value);
+        return "";
+      }
+      case "image_quality": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "";
+        setPeerOption(entry.peerId, "image_quality", value);
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const opt = this.buildImageQualityOption(value);
+          if (opt) {
+            const msg = hbb.Message.create({ misc: { option: opt } });
+            transport.send(hbb.Message.encode(msg).finish());
+          }
+        }
+        return "";
+      }
+      case "input_os_password": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const keyMsg = hbb.Message.create({
+            keyEvent: { mode: 0, press: true, seq: value },
+          });
+          transport.send(hbb.Message.encode(keyMsg).finish());
+          const enterMsg = hbb.Message.create({
+            keyEvent: { mode: 0, press: true, controlKey: 4 },
+          });
+          transport.send(hbb.Message.encode(enterMsg).finish());
+        }
         return "";
       }
       case "send_mouse": {
@@ -375,6 +455,21 @@ export class BridgeDispatcher {
       case "platform": {
         return "Web";
       }
+      case "option:session": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "";
+        return getPeerOption(entry.peerId, arg);
+      }
+      case "option:toggle": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "false";
+        return getPeerToggleOption(entry.peerId, arg) ? "true" : "false";
+      }
+      case "image_quality": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "balanced";
+        return getPeerOption(entry.peerId, "image_quality") || "balanced";
+      }
       default:
         return "";
     }
@@ -382,6 +477,11 @@ export class BridgeDispatcher {
 
   setSessionId(id: string): void {
     this.currentSessionId = id;
+  }
+
+  getCurrentPeerId(): string | null {
+    const entry = this.getCurrentSessionEntry();
+    return entry ? entry.peerId : null;
   }
 
   getJobs(): JobProgress[] {
@@ -441,6 +541,85 @@ export class BridgeDispatcher {
     entry.manager.setFileResponseHandler((fr) => {
       entry.fileTransfer.handleFileResponse(fr);
     });
+  }
+
+  private handleToggleOption(entry: SessionEntry, name: string): void {
+    const BoolOption = hbb.OptionMessage.BoolOption;
+    const transport = entry.manager.getRelayTransport();
+
+    if (name === "block-input") {
+      if (transport) {
+        const msg = hbb.Message.create({
+          misc: { option: { blockInput: BoolOption.Yes } },
+        });
+        transport.send(hbb.Message.encode(msg).finish());
+      }
+      return;
+    }
+    if (name === "unblock-input") {
+      if (transport) {
+        const msg = hbb.Message.create({
+          misc: { option: { blockInput: BoolOption.No } },
+        });
+        transport.send(hbb.Message.encode(msg).finish());
+      }
+      return;
+    }
+
+    const currentlyEnabled = getPeerToggleOption(entry.peerId, name);
+    const newEnabled = !currentlyEnabled;
+    setPeerToggleOption(entry.peerId, name, newEnabled);
+    const val = newEnabled ? BoolOption.Yes : BoolOption.No;
+
+    const fieldMap: Record<string, string> = {
+      "show-remote-cursor": "showRemoteCursor",
+      "disable-audio": "disableAudio",
+      "disable-clipboard": "disableClipboard",
+      "lock-after-session-end": "lockAfterSessionEnd",
+      "privacy-mode": "privacyMode",
+      "enable-file-copy-paste": "enableFileTransfer",
+      "show-my-cursor": "showMyCursor",
+      "follow-remote-cursor": "followRemoteCursor",
+      "follow-remote-window": "followRemoteWindow",
+      "disable-camera": "disableCamera",
+    };
+
+    if (name === "view-only") {
+      const fields = [
+        "disableKeyboard",
+        "disableClipboard",
+        "enableFileTransfer",
+        "lockAfterSessionEnd",
+      ];
+      if (transport) {
+        const opt: Record<string, number> = {};
+        for (const f of fields) opt[f] = val;
+        const msg = hbb.Message.create({ misc: { option: opt } });
+        transport.send(hbb.Message.encode(msg).finish());
+      }
+      return;
+    }
+
+    const field = fieldMap[name];
+    if (field && transport) {
+      const opt: Record<string, number> = { [field]: val };
+      const msg = hbb.Message.create({ misc: { option: opt } });
+      transport.send(hbb.Message.encode(msg).finish());
+    }
+  }
+
+  private buildImageQualityOption(value: string): hbb.IOptionMessage | null {
+    const ImageQuality = hbb.ImageQuality;
+    switch (value) {
+      case "low":
+        return { imageQuality: ImageQuality.Low };
+      case "balanced":
+        return { imageQuality: ImageQuality.Balanced };
+      case "best":
+        return { imageQuality: ImageQuality.Best };
+      default:
+        return null;
+    }
   }
 
   private getCurrentTransport() {
