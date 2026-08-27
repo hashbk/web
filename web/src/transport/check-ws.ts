@@ -59,9 +59,12 @@ export function checkWs(endpoint: string, opts: CheckWsOptions = {}): string {
   } else {
     address = `${host}:${dstPort}`;
   }
+  const isHttpsPage =
+    typeof globalThis.location !== "undefined" &&
+    globalThis.location.protocol === "https:";
   const protocol = isDomain
-    ? opts.apiServer?.startsWith("https") ? "wss" : "ws"
-    : "ws";
+    ? (isHttpsPage || opts.apiServer?.startsWith("https")) ? "wss" : "ws"
+    : isHttpsPage ? "wss" : "ws";
   return `${protocol}://${address}`;
 }
 
