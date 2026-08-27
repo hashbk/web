@@ -191,12 +191,66 @@ export class VideoDecoderManager {
   private decoders = new Map<number, DecoderEntry>();
   private width = 0;
   private height = 0;
+  private supportedEncoding: { h264: boolean; h265: boolean; vp8: boolean; av1: boolean } = {
+    h264: false, h265: false, vp8: false, av1: false,
+  };
+  private decoderCaps: { h264: boolean; h265: boolean; vp8: boolean; av1: boolean } = {
+    h264: false, h265: false, vp8: false, av1: false,
+  };
+  private capsChecked = false;
 
   constructor(private callbacks: WebCodecsCallbacks = {}) {}
 
   setDimensions(width: number, height: number): void {
     this.width = width;
     this.height = height;
+    if (!this.capsChecked) {
+      this.capsChecked = true;
+      this.checkDecoderCapabilities();
+    }
+  }
+
+  setSupportedEncoding(enc: hbb.ISupportedEncoding): void {
+    this.supportedEncoding = {
+      h264: enc.h264 ?? false,
+      h265: enc.h265 ?? false,
+      vp8: enc.vp8 ?? false,
+      av1: enc.av1 ?? false,
+    };
+  }
+
+  getAlternativeCodecs(): { vp8: boolean; av1: boolean; h264: boolean; h265: boolean } {
+    return {
+      vp8: this.decoderCaps.vp8 && this.supportedEncoding.vp8,
+      av1: this.decoderCaps.av1 && this.supportedEncoding.av1,
+      h264: this.decoderCaps.h264 && this.supportedEncoding.h264,
+      h265: this.decoderCaps.h265 && this.supportedEncoding.h265,
+    };
+  }
+
+  private checkDecoderCapabilities(): void {
+    const VD = (globalThis as any).VideoDecoder;
+    if (!VD || typeof VD.isConfigSupported !== "function") {
+      this.decoderCaps = { h264: true, h265: false, vp8: true, av1: false };
+      return;
+    }
+    const w = this.width || 1920;
+    const h = this.height || 1080;
+    const codecs: Array<[keyof typeof this.decoderCaps, string]> = [
+      ["h264", "avc1.42c01e"],
+      ["h265", "hev1.1.6.L93.B0"],
+      ["vp8", "vp8"],
+      ["av1", "av01.0.04M.08"],
+    ];
+    for (const [key, codec] of codecs) {
+      VD.isConfigSupported({ codec, codedWidth: w, codedHeight: h })
+        .then((result: { supported?: boolean }) => {
+          this.decoderCaps[key] = result?.supported === true;
+        })
+        .catch(() => {
+          this.decoderCaps[key] = false;
+        });
+    }
   }
 
   decodeVideoFrame(videoFrame: hbb.IVideoFrame): void {
