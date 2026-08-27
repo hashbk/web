@@ -196,6 +196,9 @@ export class MessageDispatcher {
         this.videoDecoder.setDimensions(w, h);
       }
     }
+    if (pi.encoding) {
+      this.videoDecoder.setSupportedEncoding(pi.encoding);
+    }
   }
 
   private handleClipboard(clipboard: hbb.IClipboard): void {

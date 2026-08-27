@@ -488,6 +488,12 @@ export class BridgeDispatcher {
     return entry ? entry.peerId : null;
   }
 
+  getAlternativeCodecs(): { vp8: boolean; av1: boolean; h264: boolean; h265: boolean } {
+    const entry = this.getCurrentSessionEntry();
+    if (!entry) return { vp8: false, av1: false, h264: false, h265: false };
+    return entry.manager.getVideoDecoder().getAlternativeCodecs();
+  }
+
   getJobs(): JobProgress[] {
     const entry = this.getCurrentSessionEntry();
     return entry ? entry.fileTransfer.getAllJobs() : [];
