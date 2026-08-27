@@ -32,6 +32,8 @@ export interface LoginParams {
   myPlatform: string;
   connType: ConnType;
   sessionId: number;
+  salt: string;
+  challenge: string;
 }
 
 export interface PeerInfo {
@@ -97,15 +99,23 @@ export class RelayClient {
     this.transport.setKey(key);
   }
 
-  async login(params: LoginParams): Promise<hbb.IPeerInfo> {
+  async recvHash(): Promise<{ salt: string; challenge: string }> {
     if (!this.transport) throw new Error("relay not connected");
     const hashBytes = await this.transport.recv(15000);
     const hashMsg = hbb.Message.decode(hashBytes);
     if (!hashMsg.hash) throw new Error("expected hash challenge");
+    return {
+      salt: hashMsg.hash.salt ?? "",
+      challenge: hashMsg.hash.challenge ?? "",
+    };
+  }
+
+  async login(params: LoginParams): Promise<hbb.IPeerInfo> {
+    if (!this.transport) throw new Error("relay not connected");
     const password = await computePassword(
       params.password,
-      hashMsg.hash.salt ?? "",
-      hashMsg.hash.challenge ?? "",
+      params.salt,
+      params.challenge,
     );
 
     const loginMsg = hbb.Message.create({
