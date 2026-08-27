@@ -55,7 +55,7 @@ export class WsTransport {
     this.pendingRecvs = [];
   }
 
-  static connect(url: string): Promise<WsTransport> {
+  static connect(url: string, timeoutMs: number = 15000): Promise<WsTransport> {
     return new Promise((resolve, reject) => {
       let wsUrl = url;
       if (
@@ -67,8 +67,25 @@ export class WsTransport {
       }
       const ws = new WebSocket(wsUrl);
       ws.binaryType = "arraybuffer";
-      ws.onopen = () => resolve(new WsTransport(ws));
-      ws.onerror = () => reject(new Error(`ws connect failed: ${wsUrl}`));
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try { ws.close(); } catch { /* ignore */ }
+        reject(new Error(`ws connect timeout after ${timeoutMs}ms: ${wsUrl}`));
+      }, timeoutMs);
+      ws.onopen = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(new WsTransport(ws));
+      };
+      ws.onerror = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error(`ws connect failed: ${wsUrl}`));
+      };
     });
   }
 

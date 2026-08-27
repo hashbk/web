@@ -92,9 +92,20 @@ export class RendezvousClient {
         transport.send(hbb.RendezvousMessage.encode(req).finish());
 
         const timeoutMs = attempt * 3000;
-        const respBytes = await transport.recv(timeoutMs);
+        let resp: hbb.RendezvousMessage | null = null;
+        for (let i = 0; i < 2; i++) {
+          const respBytes = await transport.recv(timeoutMs);
+          const msg = hbb.RendezvousMessage.decode(respBytes);
+          if (msg.keyExchange) {
+            continue;
+          }
+          resp = msg;
+          break;
+        }
         transport.close();
-        const resp = hbb.RendezvousMessage.decode(respBytes);
+        if (!resp) {
+          throw new Error("rendezvous: only key_exchange received");
+        }
 
         if (resp.relayResponse) {
           return {

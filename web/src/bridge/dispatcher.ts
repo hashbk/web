@@ -16,6 +16,7 @@ import { FileTransferManager } from "../file/file-transfer.js";
 import type { JobProgress } from "../file/file-transfer.js";
 import { RendezvousClient } from "../rendezvous/rendezvous-client.js";
 import { deriveRendezvousServer } from "../config/option-store.js";
+import { buildPeerInfoEventJson } from "../session/message-dispatcher.js";
 
 export interface BridgeConfig extends SessionConfig {
   cursorElement?: HTMLElement;
@@ -91,6 +92,7 @@ export class BridgeDispatcher {
           connType: ConnType.DEFAULT_CONN,
         });
         entry.connected = true;
+        this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
         const transport = entry.manager.getRelayTransport();
         if (transport) {
           entry.fileTransfer = new FileTransferManager({

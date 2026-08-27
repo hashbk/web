@@ -1,11 +1,12 @@
 import { RendezvousClient } from "../rendezvous/rendezvous-client.js";
 import type { RendezvousConfig } from "../rendezvous/rendezvous-client.js";
 import { RelayClient } from "../relay/relay-client.js";
-import type { LoginParams, PeerInfo, RelayConfig } from "../relay/relay-client.js";
+import type { LoginParams, RelayConfig } from "../relay/relay-client.js";
 import { initSodium } from "../crypto/sodium.js";
 import { ConnType } from "../constants.js";
 import { VideoDecoderManager } from "../video/video-decoder.js";
 import { MessageDispatcher } from "./message-dispatcher.js";
+import { buildConnectionReadyEventJson } from "./message-dispatcher.js";
 
 import { hbb } from "../proto/index.js";
 
@@ -35,8 +36,10 @@ export class SessionManager {
   private relay: RelayClient;
   private videoDecoder: VideoDecoderManager;
   private dispatcher: MessageDispatcher | null = null;
+  private onGlobalEvent?: (json: string) => void;
 
   constructor(config: SessionConfig) {
+    this.onGlobalEvent = config.onGlobalEvent;
     const rendezvousConfig: RendezvousConfig = {
       rendezvousServer: config.rendezvousServer,
       apiServer: config.apiServer,
@@ -62,7 +65,7 @@ export class SessionManager {
     });
   }
 
-  async connect(params: ConnectParams): Promise<PeerInfo> {
+  async connect(params: ConnectParams): Promise<hbb.IPeerInfo> {
     await initSodium();
     const connType = params.connType ?? ConnType.DEFAULT_CONN;
 
@@ -77,6 +80,12 @@ export class SessionManager {
       connType,
     );
     await this.relay.secureConnection(params.peerId, result.signedIdPk);
+
+    const relayTransport = this.relay.getTransport();
+    const isSecured = relayTransport ? relayTransport.isSecured() : false;
+    this.onGlobalEvent?.(
+      buildConnectionReadyEventJson(isSecured, false, ""),
+    );
 
     const sessionId = Math.floor(Math.random() * 0xffffffff);
     const loginParams: LoginParams = {
