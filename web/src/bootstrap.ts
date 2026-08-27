@@ -54,6 +54,11 @@ function getDispatcher(): BridgeDispatcher {
           (g["onRgba"] as (d: number, r: Uint8Array) => void)(display, rgba);
         }
       },
+      onVideoFrame: (display: number, frame: unknown) => {
+        if (typeof g["onVideoFrame"] === "function") {
+          (g["onVideoFrame"] as (d: number, f: unknown) => void)(display, frame);
+        }
+      },
     };
     dispatcher = new BridgeDispatcher(config);
   }
