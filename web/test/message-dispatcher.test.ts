@@ -54,16 +54,36 @@ describe("MessageDispatcher", () => {
     expect(parsed.y).toBe("200");
   });
 
-  it("dispatches cursorId to onGlobalEvent", () => {
+  it("dispatches cursorId to onGlobalEvent after cursorData loaded", () => {
+    const events: string[] = [];
+    const { dispatcher } = makeDispatcher({
+      onGlobalEvent: (json: string) => events.push(json),
+    });
+    const dataMsg = hbb.Message.create({
+      cursorData: {
+        id: 999,
+        width: 1,
+        height: 1,
+        colors: new Uint8Array([0, 0, 0, 0]),
+      },
+    });
+    dispatcher.dispatch(hbb.Message.encode(dataMsg).finish());
+    events.length = 0;
+    const msg = hbb.Message.create({ cursorId: 999 });
+    dispatcher.dispatch(hbb.Message.encode(msg).finish());
+    const parsed = JSON.parse(events[0]);
+    expect(parsed.name).toBe("cursor_id");
+    expect(parsed.id).toBe("999");
+  });
+
+  it("suppresses cursorId when cursorData not yet loaded", () => {
     const events: string[] = [];
     const { dispatcher } = makeDispatcher({
       onGlobalEvent: (json: string) => events.push(json),
     });
     const msg = hbb.Message.create({ cursorId: 999 });
     dispatcher.dispatch(hbb.Message.encode(msg).finish());
-    const parsed = JSON.parse(events[0]);
-    expect(parsed.name).toBe("cursor_id");
-    expect(parsed.id).toBe("999");
+    expect(events.length).toBe(0);
   });
 
   it("dispatches clipboard to onClipboard and onGlobalEvent", () => {
