@@ -8,11 +8,20 @@ const sodiumCjs = fileURLToPath(
   ),
 );
 
+function formatBuildDate(): string {
+  const d = new Date();
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export default defineConfig({
   resolve: {
     alias: {
       "libsodium-wrappers-sumo": sodiumCjs,
     },
+  },
+  define: {
+    __BUILD_DATE__: JSON.stringify(formatBuildDate()),
   },
   build: {
     lib: {
