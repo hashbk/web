@@ -81,6 +81,10 @@ export class MessageDispatcher {
   private loadedCursorIds = new Set<number>();
   private firstFrame = false;
   isFileTransfer = false;
+  private recvBytes = 0;
+  private frameCount: Record<number, number> = {};
+  private statsTs = 0;
+  private statsTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     videoDecoder: VideoDecoderManager,
@@ -97,6 +101,7 @@ export class MessageDispatcher {
       console.error("Message decode failed:", e);
       return;
     }
+    this.recvBytes += bytes.length;
     this.handleMessage(msg);
   }
 
@@ -117,7 +122,11 @@ export class MessageDispatcher {
         this.callbacks.onGlobalEvent?.(
           JSON.stringify({ name: "msgbox", type: "", title: "", text: "", link: "" }),
         );
+        this.startStatsTimer();
       }
+      const display = msg.videoFrame.display ?? 0;
+      this.frameCount[display] = (this.frameCount[display] ?? 0) +
+        this.countVideoFrames(msg.videoFrame);
       this.videoDecoder.decodeVideoFrame(msg.videoFrame);
       this.sendVideoReceived();
       return;
@@ -185,6 +194,7 @@ export class MessageDispatcher {
       return;
     }
     if (msg.testDelay) {
+      this.handleTestDelay(msg.testDelay);
       return;
     }
     this.callbacks.onDefault?.(msg);
@@ -301,6 +311,64 @@ export class MessageDispatcher {
       misc: { videoReceived: true },
     });
     this.callbacks.sendToPeer(msg);
+  }
+
+  private handleTestDelay(td: hbb.ITestDelay): void {
+    if (td.fromClient) return;
+    this.callbacks.onGlobalEvent?.(
+      JSON.stringify({
+        name: "update_quality_status",
+        delay: `${td.lastDelay ?? 0}`,
+        target_bitrate: `${td.targetBitrate ?? 0}`,
+      }),
+    );
+    this.callbacks.sendToPeer?.(hbb.Message.create({ testDelay: td }));
+  }
+
+  private countVideoFrames(vf: hbb.IVideoFrame): number {
+    const frames =
+      vf.vp9s?.frames ??
+      vf.h264s?.frames ??
+      vf.h265s?.frames ??
+      vf.av1s?.frames ??
+      vf.vp8s?.frames;
+    return frames?.length ?? 0;
+  }
+
+  private startStatsTimer(): void {
+    if (this.statsTimer) return;
+    this.statsTs = Date.now();
+    this.statsTimer = setInterval(() => this.updateQualityStats(), 1000);
+  }
+
+  private updateQualityStats(): void {
+    const now = Date.now();
+    const elapsed = now - this.statsTs;
+    if (elapsed < 1000) return;
+    this.statsTs = now;
+    const speed = `${(this.recvBytes / 1024 / elapsed * 1000).toFixed(2)} kb/s`;
+    this.recvBytes = 0;
+    const fps: Record<string, number> = {};
+    for (const k in this.frameCount) {
+      if (Object.prototype.hasOwnProperty.call(this.frameCount, k)) {
+        fps[k] = Math.floor(this.frameCount[k] / (elapsed / 1000));
+      }
+    }
+    this.frameCount = {};
+    this.callbacks.onGlobalEvent?.(
+      JSON.stringify({
+        name: "update_quality_status",
+        speed,
+        fps: JSON.stringify(fps),
+      }),
+    );
+  }
+
+  destroy(): void {
+    if (this.statsTimer) {
+      clearInterval(this.statsTimer);
+      this.statsTimer = null;
+    }
   }
 }
 
