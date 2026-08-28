@@ -173,3 +173,54 @@ export function getPeerToggleOption(peerId: string, name: string): boolean {
 export function setPeerToggleOption(peerId: string, name: string, enabled: boolean): void {
   setPeerOption(peerId, name, enabled ? "Y" : "");
 }
+
+export interface PeerEntry {
+  id: string;
+  username: string;
+  hostname: string;
+  platform: string;
+  alias: string;
+  tm: number;
+}
+
+export function getAllPeers(): PeerEntry[] {
+  if (!hasLocalStorage()) return [];
+  const peerIds = new Set<string>();
+  const prefix = PEER_OPTION_PREFIX;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(prefix)) {
+      const rest = key.slice(prefix.length);
+      const colonIdx = rest.indexOf(":option:");
+      if (colonIdx > 0) {
+        peerIds.add(rest.slice(0, colonIdx));
+      }
+    }
+  }
+  const peers: PeerEntry[] = [];
+  for (const id of peerIds) {
+    if (!id) continue;
+    const infoRaw = getPeerOption(id, "info");
+    const tm = parseInt(getPeerOption(id, "tm"), 10) || 0;
+    const alias = getPeerOption(id, "alias");
+    let username = "";
+    let hostname = "";
+    let platform = "";
+    if (infoRaw) {
+      try {
+        const info = JSON.parse(infoRaw) as {
+          username?: string;
+          hostname?: string;
+          platform?: string;
+        };
+        username = info.username || "";
+        hostname = info.hostname || "";
+        platform = info.platform || "";
+      } catch {
+        // ignore invalid info json
+      }
+    }
+    peers.push({ id, username, hostname, platform, alias, tm });
+  }
+  return peers;
+}
