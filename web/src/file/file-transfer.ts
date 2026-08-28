@@ -11,7 +11,7 @@ import {
   encodeCancelJob,
   encodeSendConfirm,
   encodeReadEmptyDirs,
-
+  encodeRenameFile,
 } from "./file-message.js";
 
 export enum JobState {
@@ -189,6 +189,18 @@ export class FileTransferManager {
 
   readEmptyDirs(path: string, includeHidden: boolean): void {
     this.config.transport.send(encodeReadEmptyDirs(path, includeHidden));
+  }
+
+  renameFile(id: number, path: string, newName: string, isRemote: boolean): void {
+    if (isRemote) {
+      this.config.transport.send(encodeRenameFile(id, path, newName));
+    }
+  }
+
+  selectFiles(): void {
+    this.config.onGlobalEvent?.(
+      JSON.stringify({ name: "selected_files", files: [] }),
+    );
   }
 
   addJob(

@@ -1,7 +1,7 @@
 import { hbb } from "../proto/index.js";
 import { SessionManager } from "../session/session-manager.js";
 import type { SessionConfig } from "../session/session-manager.js";
-import { ConnType } from "../constants.js";
+import { ConnType, APP_VERSION } from "../constants.js";
 import { encodeMouseEventFromJson } from "../input/mouse.js";
 import {
   encodeInputKeyFromJson,
@@ -18,11 +18,19 @@ import { RendezvousClient } from "../rendezvous/rendezvous-client.js";
 import {
   deriveRendezvousServer,
   deriveLicenceKey,
+  deriveApiServer,
+  getOption,
+  setOption,
+  getAllOptions,
+  setAllOptions,
+  getUserDefaultOption,
+  setUserDefaultOption,
   getPeerOption,
   setPeerOption,
   getPeerToggleOption,
   setPeerToggleOption,
 } from "../config/option-store.js";
+import { translate, getLangs, getLocalOption, setLocalOption } from "../i18n/translate.js";
 import { buildPeerInfoEventJson } from "../session/message-dispatcher.js";
 
 export interface BridgeConfig extends SessionConfig {
@@ -48,6 +56,11 @@ interface SessionEntry {
 export class BridgeDispatcher {
   private sessions = new Map<string, SessionEntry>();
   private currentSessionId: string | null = null;
+  private envVars: Record<string, string> = {};
+  private favPeers: string[] = [];
+  private auditGuid = "";
+  private lastAuditNote = "";
+  private accountAuthResult = "";
 
   constructor(private config: BridgeConfig) {}
 
@@ -441,29 +454,321 @@ export class BridgeDispatcher {
         }
         return "";
       }
+      case "send_2fa": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const args = JSON.parse(value) as { code?: string; trust_this_device?: boolean };
+          const msg = hbb.Message.create({
+            auth_2fa: { code: args.code ?? "" },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "toggle_privacy_mode": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const args = JSON.parse(value) as { impl_key?: string; on?: boolean };
+          const msg = hbb.Message.create({
+            misc: {
+              togglePrivacyMode: {
+                implKey: args.impl_key ?? "",
+                on: args.on ?? false,
+              },
+            },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "toggle_virtual_display": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const args = JSON.parse(value) as { index?: number; on?: boolean };
+          const msg = hbb.Message.create({
+            misc: {
+              toggleVirtualDisplay: {
+                display: args.index ?? 0,
+                on: args.on ?? false,
+              },
+            },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "custom_image_quality": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const quality = parseInt(value, 10);
+          const msg = hbb.Message.create({
+            misc: { option: { customImageQuality: quality << 8 } },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "custom-fps": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const fps = parseInt(value, 10);
+          const msg = hbb.Message.create({
+            misc: { option: { customFps: fps } },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "elevate_direct": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const msg = hbb.Message.create({
+            misc: { elevationRequest: { direct: true } },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "elevate_with_logon": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const args = JSON.parse(value) as { username?: string; password?: string };
+          const msg = hbb.Message.create({
+            misc: {
+              elevationRequest: {
+                logon: { username: args.username ?? "", password: args.password ?? "" },
+              },
+            },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "change_resolution": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const args = JSON.parse(value) as { display?: number; width?: number; height?: number };
+          const msg = hbb.Message.create({
+            misc: {
+              changeResolution: { width: args.width ?? 0, height: args.height ?? 0 },
+            },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "selected_sid": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const sid = parseInt(value, 10);
+          if (!isNaN(sid)) {
+            const msg = hbb.Message.create({ misc: { selectedSid: sid } });
+            transport.send(hbb.Message.encode(msg).finish());
+          }
+        }
+        return "";
+      }
+      case "restart": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const msg = hbb.Message.create({ misc: { restartRemoteDevice: true } });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "send_note": {
+        const entry = this.getCurrentSessionEntry();
+        if (entry) {
+          this.lastAuditNote = value;
+        }
+        return "";
+      }
+      case "change_prefer_codec": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const msg = hbb.Message.create({ misc: {} });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "audit_guid": {
+        this.auditGuid = value;
+        return "";
+      }
+      case "rename_file": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          const args = JSON.parse(value) as {
+            id: number;
+            path: string;
+            new_name: string;
+            is_remote: boolean;
+          };
+          ft.renameFile(args.id, args.path, args.new_name, args.is_remote);
+        }
+        return "";
+      }
+      case "select_files": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          ft.selectFiles();
+        }
+        return "";
+      }
+      case "open_terminal": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const args = JSON.parse(value) as { terminal_id: number; rows: number; cols: number };
+          const msg = hbb.Message.create({
+            terminalAction: { open: { terminalId: args.terminal_id, rows: args.rows, cols: args.cols } },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "send_terminal_input": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const args = JSON.parse(value) as { terminal_id: number; data: string };
+          const encoded = new TextEncoder().encode(args.data);
+          const msg = hbb.Message.create({
+            terminalAction: { data: { terminalId: args.terminal_id, data: encoded, compressed: false } },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "resize_terminal": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const args = JSON.parse(value) as { terminal_id: number; rows: number; cols: number };
+          const msg = hbb.Message.create({
+            terminalAction: { resize: { terminalId: args.terminal_id, rows: args.rows, cols: args.cols } },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "close_terminal": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          const args = JSON.parse(value) as { terminal_id: number };
+          const msg = hbb.Message.create({
+            terminalAction: { close: { terminalId: args.terminal_id } },
+          });
+          transport.send(hbb.Message.encode(msg).finish());
+        }
+        return "";
+      }
+      case "common": {
+        const transport = this.getCurrentTransport();
+        if (transport) {
+          try {
+            const args = JSON.parse(value) as { name?: string; value?: string };
+            if (args.name === "continue-insecure-connection") {
+              const msg = hbb.Message.create({
+                misc: { option: {} },
+              });
+              transport.send(hbb.Message.encode(msg).finish());
+            }
+          } catch {
+            // ignore invalid json
+          }
+        }
+        return "";
+      }
+      case "option": {
+        const args = JSON.parse(value) as { name?: string; value?: string };
+        if (args.name) setOption(args.name, args.value ?? "");
+        return "";
+      }
+      case "options": {
+        setAllOptions(value);
+        return "";
+      }
+      case "envvar": {
+        const args = JSON.parse(value) as { name?: string; value?: string | null };
+        if (args.name) {
+          if (args.value === null) delete this.envVars[args.name];
+          else if (args.value !== undefined) this.envVars[args.name] = args.value;
+        }
+        return "";
+      }
+      case "fav": {
+        try {
+          this.favPeers = JSON.parse(value) as string[];
+        } catch {
+          // ignore invalid json
+        }
+        return "";
+      }
+      case "option:local": {
+        const args = JSON.parse(value) as { name?: string; value?: string };
+        if (args.name) setLocalOption(args.name, args.value ?? "");
+        return "";
+      }
+      case "option:flutter:local": {
+        const args = JSON.parse(value) as { name?: string; value?: string };
+        if (args.name) setLocalOption(`flutter:${args.name}`, args.value ?? "");
+        return "";
+      }
+      case "option:flutter:peer": {
+        const entry = this.getCurrentSessionEntry();
+        if (entry) {
+          const args = JSON.parse(value) as { name?: string; value?: string };
+          if (args.name) setPeerOption(entry.peerId, `flutter:${args.name}`, args.value ?? "");
+        }
+        return "";
+      }
+      case "option:peer": {
+        const args = JSON.parse(value) as { id?: string; name?: string; value?: string };
+        if (args.id && args.name) setPeerOption(args.id, args.name, args.value ?? "");
+        return "";
+      }
+      case "option:user:default": {
+        const args = JSON.parse(value) as { name?: string; value?: string };
+        if (args.name) setUserDefaultOption(args.name, args.value ?? "");
+        return "";
+      }
+      case "remove_peer": {
+        const entry = this.sessions.get(value);
+        if (entry) {
+          entry.manager.close();
+          this.sessions.delete(value);
+        }
+        return "";
+      }
+      case "save_ab": {
+        return "";
+      }
+      case "clear_ab": {
+        return "";
+      }
+      case "load_ab": {
+        return "";
+      }
+      case "save_group": {
+        return "";
+      }
+      case "clear_group": {
+        return "";
+      }
+      case "load_group": {
+        return "";
+      }
+      case "account_auth": {
+        return "";
+      }
+      case "account_auth_cancel": {
+        return "";
+      }
       default:
         return "";
     }
   }
 
-  async getByName(name: string, arg: string): Promise<string> {
+  getByName(name: string, arg: string): string {
     switch (name) {
-      case "read_local_dir": {
-        const entry = this.getCurrentSessionEntry();
-        if (!entry) return "";
-        try {
-          const args = JSON.parse(arg) as {
-            path: string;
-            include_hidden: boolean;
-          };
-          return await entry.localFs.readDirToJson(
-            args.path,
-            args.include_hidden,
-          );
-        } catch {
-          return "";
-        }
-      }
       case "platform": {
         return "Web";
       }
@@ -482,8 +787,153 @@ export class BridgeDispatcher {
         if (!entry) return "balanced";
         return getPeerOption(entry.peerId, "image_quality") || "balanced";
       }
+      case "remember": {
+        return "false";
+      }
+      case "option": {
+        return getOption(arg);
+      }
+      case "options": {
+        return getAllOptions();
+      }
+      case "option:local": {
+        return getLocalOption(arg);
+      }
+      case "option:flutter:local": {
+        return getLocalOption(`flutter:${arg}`);
+      }
+      case "option:flutter:peer": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "";
+        return getPeerOption(entry.peerId, `flutter:${arg}`);
+      }
+      case "option:peer": {
+        try {
+          const opts = JSON.parse(arg) as { id?: string; name?: string };
+          if (opts.id && opts.name) {
+            return getPeerOption(opts.id, opts.name);
+          }
+        } catch {
+          return "";
+        }
+        return "";
+      }
+      case "option:user:default": {
+        return getUserDefaultOption(arg);
+      }
+      case "version": {
+        return APP_VERSION;
+      }
+      case "app-name": {
+        return getLocalOption("app-name") || "RustDesk";
+      }
+      case "my_id": {
+        return "web";
+      }
+      case "my_name": {
+        return "web";
+      }
+      case "uuid": {
+        return "";
+      }
+      case "build_date": {
+        return "";
+      }
+      case "api_server": {
+        return deriveApiServer();
+      }
+      case "audit_server": {
+        return deriveApiServer() + "/api/audit/" + arg;
+      }
+      case "get_version_number": {
+        return String(this.parseVersionNumber(arg));
+      }
+      case "langs": {
+        return getLangs();
+      }
+      case "translate": {
+        try {
+          const params = JSON.parse(arg) as { locale?: string; text?: string };
+          return translate(params.locale ?? "en", params.text ?? "");
+        } catch {
+          return arg;
+        }
+      }
+      case "fav": {
+        return JSON.stringify(this.favPeers);
+      }
+      case "envvar": {
+        return this.envVars[arg] ?? "";
+      }
+      case "alternative_codecs": {
+        return JSON.stringify(this.getAlternativeCodecs());
+      }
+      case "main_display": {
+        if (typeof window !== "undefined") {
+          return JSON.stringify({
+            w: window.screen.availWidth,
+            h: window.screen.availHeight,
+            scaleFactor: window.devicePixelRatio,
+          });
+        }
+        return "";
+      }
+      case "peer_exists": {
+        return getPeerOption(arg, "info") !== "" ? "true" : "false";
+      }
+      case "peer_has_password": {
+        return getPeerOption(arg, "password") !== "" ? "true" : "false";
+      }
+      case "load_recent_peers": {
+        return "";
+      }
+      case "load_recent_peers_sync": {
+        return JSON.stringify({ peers: "[]" });
+      }
+      case "load_fav_peers": {
+        return "";
+      }
+      case "account_auth_result": {
+        return this.accountAuthResult;
+      }
+      case "enable_trusted_devices": {
+        return "N";
+      }
+      case "conn_session_id": {
+        const entry = this.getCurrentSessionEntry();
+        if (!entry) return "";
+        return String(entry.manager.getSessionId());
+      }
+      case "last_audit_note": {
+        return this.lastAuditNote;
+      }
+      case "audit_guid": {
+        return this.auditGuid;
+      }
       default:
         return "";
+    }
+  }
+
+  private parseVersionNumber(version: string): number {
+    try {
+      const parts = version.split("-");
+      let result = 0;
+      if (parts.length > 0) {
+        let last = 0;
+        for (const segment of parts[0].split(".")) {
+          last = parseInt(segment, 10) || 0;
+          result = result * 1000 + last;
+        }
+        result -= last;
+        result += last * 10;
+      }
+      if (parts.length > 1) {
+        result += parseInt(parts[1], 10) || 0;
+      }
+      return result;
+    } catch {
+      return 0;
     }
   }
 

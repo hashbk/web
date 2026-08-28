@@ -92,6 +92,17 @@ export function encodeRemoveDir(id: number, path: string): Uint8Array {
   return hbb.Message.encode(msg).finish();
 }
 
+export function encodeRenameFile(
+  id: number,
+  path: string,
+  newName: string,
+): Uint8Array {
+  const msg = hbb.Message.create({
+    fileAction: { rename: { id, path, newName } },
+  });
+  return hbb.Message.encode(msg).finish();
+}
+
 export function encodeReadAllFiles(
   id: number,
   path: string,
