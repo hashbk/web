@@ -77,7 +77,14 @@ export class BridgeDispatcher {
   private accountAuthKeepQuerying = false;
   private accountAuthPopup: Window | null = null;
 
-  constructor(private config: BridgeConfig) {}
+  constructor(private config: BridgeConfig) {
+    try {
+      const stored = getOption("fav");
+      if (stored) this.favPeers = JSON.parse(stored) as string[];
+    } catch {
+      // ignore invalid stored fav list
+    }
+  }
 
   async setByName(name: string, value: string): Promise<string> {
     switch (name) {
@@ -175,6 +182,7 @@ export class BridgeDispatcher {
           if (entry.remember && args.password) {
             setPeerOption(entry.peerId, "password", args.password);
           }
+          this.persistPeerInfo(entry.peerId, peerInfo);
           this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
           this.notifyWaitingForImage(entry);
           this.setupFileTransfer(entry);
@@ -726,6 +734,7 @@ export class BridgeDispatcher {
       case "fav": {
         try {
           this.favPeers = JSON.parse(value) as string[];
+          setOption("fav", value);
         } catch {
           // ignore invalid json
         }
@@ -1100,6 +1109,7 @@ export class BridgeDispatcher {
         });
         entry.connected = true;
         entry.connecting = false;
+        this.persistPeerInfo(entry.peerId, peerInfo);
         this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
         this.notifyWaitingForImage(entry);
         this.setupFileTransfer(entry);
@@ -1118,6 +1128,15 @@ export class BridgeDispatcher {
         }),
       );
     }
+  }
+
+  private persistPeerInfo(peerId: string, peerInfo: hbb.IPeerInfo): void {
+    setPeerOption(peerId, "info", JSON.stringify({
+      username: peerInfo.username ?? "",
+      hostname: peerInfo.hostname ?? "",
+      platform: peerInfo.platform ?? "",
+    }));
+    setPeerOption(peerId, "tm", String(Date.now()));
   }
 
   private notifyWaitingForImage(entry: SessionEntry): void {
