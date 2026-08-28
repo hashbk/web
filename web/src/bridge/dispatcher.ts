@@ -35,6 +35,8 @@ import { translate, getLangs, getLocalOption, setLocalOption } from "../i18n/tra
 import { buildPeerInfoEventJson } from "../session/message-dispatcher.js";
 import { cryptoBoxKeypair, base64Encode } from "../crypto/sodium.js";
 
+declare const __BUILD_DATE__: string | undefined;
+
 export interface BridgeConfig extends SessionConfig {
   cursorElement?: HTMLElement;
   cursorElements?: HTMLElement;
@@ -42,6 +44,8 @@ export interface BridgeConfig extends SessionConfig {
   onRegisteredEvent?: (json: string) => void;
   onVideoFrame?: (display: number, frame: unknown) => void;
   onRgba?: (display: number, rgba: Uint8Array) => void;
+  onLoadAbFinished?: (json: string) => void;
+  onLoadGroupFinished?: (json: string) => void;
 }
 
 interface SessionEntry {
@@ -755,21 +759,27 @@ export class BridgeDispatcher {
         return "";
       }
       case "save_ab": {
+        setOption("ab-cache", value);
         return "";
       }
       case "clear_ab": {
+        setOption("ab-cache", "");
         return "";
       }
       case "load_ab": {
+        this.config.onLoadAbFinished?.(getOption("ab-cache"));
         return "";
       }
       case "save_group": {
+        setOption("group-cache", value);
         return "";
       }
       case "clear_group": {
+        setOption("group-cache", "");
         return "";
       }
       case "load_group": {
+        this.config.onLoadGroupFinished?.(getOption("group-cache"));
         return "";
       }
       case "account_auth": {
@@ -798,6 +808,18 @@ export class BridgeDispatcher {
     switch (name) {
       case "platform": {
         return "Web";
+      }
+      case "local_os": {
+        return "Web";
+      }
+      case "is_using_public_server": {
+        return "true";
+      }
+      case "get_conn_status": {
+        return JSON.stringify({ status_num: 0 });
+      }
+      case "resolve_avatar_url": {
+        return arg;
       }
       case "option:session": {
         const entry = this.getCurrentSessionEntry();
@@ -864,7 +886,7 @@ export class BridgeDispatcher {
         return this.getOrCreateUuid();
       }
       case "build_date": {
-        return "";
+        return typeof __BUILD_DATE__ === "string" ? __BUILD_DATE__ : "";
       }
       case "api_server": {
         return deriveApiServer();
