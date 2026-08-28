@@ -10,7 +10,6 @@ import {
   encodeCtrlAltDel,
   encodeLockScreen,
 } from "../input/keyboard.js";
-import { applyCursor } from "../cursor/cursor.js";
 import { LocalFileSystem } from "../file/local-fs.js";
 import { FileTransferManager } from "../file/file-transfer.js";
 import type { JobProgress } from "../file/file-transfer.js";
@@ -328,12 +327,6 @@ export class BridgeDispatcher {
             misc: { switchDisplay: { display } },
           });
           transport.send(hbb.Message.encode(msg).finish());
-        }
-        return "";
-      }
-      case "cursor": {
-        if (this.config.cursorElement) {
-          applyCursor(this.config.cursorElement, value);
         }
         return "";
       }
@@ -824,9 +817,6 @@ export class BridgeDispatcher {
   getByName(name: string, arg: string): string {
     switch (name) {
       case "platform": {
-        return "Web";
-      }
-      case "local_os": {
         return "Web";
       }
       case "is_using_public_server": {
