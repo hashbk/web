@@ -240,13 +240,7 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
       case "resolve_avatar_url":
         return arg;
       default:
-        if (name.startsWith("option:")) {
-          return "";
-        }
-        if (name.startsWith("envvar:")) {
-          return "";
-        }
-        return "";
+        return getDispatcher().getByName(name, arg);
     }
   } catch (err) {
     console.error(`getByName("${name}") failed:`, err);

@@ -184,6 +184,10 @@ export class SessionManager {
     }
   }
 
+  getSessionId(): number {
+    return this.sessionId;
+  }
+
   close(): void {
     this.videoDecoder.close();
     this.relay.close();
