@@ -387,4 +387,129 @@ describe("FileTransferManager", () => {
     ft.handleFileResponse({});
     expect(events.length).toBe(0);
   });
+
+  it("download flow: dir fills files, digest confirms, block writes, done closes", async () => {
+    const events: string[] = [];
+    const { config, transport } = makeConfig(events);
+    const ft = new FileTransferManager(config);
+
+    const writes: Uint8Array[] = [];
+    const mockWriter = {
+      write: vi.fn((d: Uint8Array) => {
+        writes.push(d);
+        return Promise.resolve();
+      }),
+      close: vi.fn(() => Promise.resolve()),
+      abort: vi.fn(() => Promise.resolve()),
+    };
+    const mockHandle = {
+      createWritable: () => Promise.resolve(mockWriter),
+    };
+    vi.spyOn(config.localFs, "createFileHandle").mockResolvedValue(
+      mockHandle as unknown as FileSystemFileHandle,
+    );
+
+    await ft.sendFiles({
+      id: 100,
+      path: "/remote/f",
+      to: "/local/f",
+      fileNum: 0,
+      includeHidden: false,
+      isRemote: true,
+      isDir: false,
+    });
+
+    ft.handleFileResponse({
+      dir: {
+        id: 100,
+        path: "/remote",
+        entries: [makeFileEntry("file.txt", hbb.FileType.File, 5, 0)],
+      },
+    });
+    expect(events.some((e) => JSON.parse(e).name === "file_dir")).toBe(true);
+
+    ft.handleFileResponse({
+      digest: { id: 100, fileNum: 0, isUpload: false, isIdentical: false },
+    });
+    const confirmAction = decodeFileAction(transport.sent[transport.sent.length - 1]);
+    expect(confirmAction.sendConfirm).toBeDefined();
+    expect(confirmAction.sendConfirm!.offsetBlk).toBe(0);
+
+    ft.handleFileResponse({
+      block: {
+        id: 100,
+        fileNum: 0,
+        data: new Uint8Array([1, 2, 3]),
+        compressed: false,
+        blkId: 0,
+      },
+    });
+    await vi.waitFor(() => expect(writes.length).toBe(1));
+    expect(writes[0]).toEqual(new Uint8Array([1, 2, 3]));
+    expect(config.localFs.createFileHandle).toHaveBeenCalledWith(
+      "/local/f/file.txt",
+    );
+
+    ft.handleFileResponse({ done: { id: 100, fileNum: 0 } });
+    await vi.waitFor(() => expect(mockWriter.close).toHaveBeenCalled());
+    expect(
+      events.some((e) => {
+        const p = JSON.parse(e);
+        return p.name === "job_done" && p.id === "100";
+      }),
+    ).toBe(true);
+  });
+
+  it("download digest with isUpload=true does not send confirm", () => {
+    const { config, transport } = makeConfig();
+    const ft = new FileTransferManager(config);
+    ft.handleFileResponse({
+      digest: { id: 200, fileNum: 0, isUpload: true, isIdentical: false },
+    });
+    expect(transport.sent.length).toBe(0);
+  });
+
+  it("download error aborts the writer", async () => {
+    const { config } = makeConfig();
+    const ft = new FileTransferManager(config);
+    const mockWriter = {
+      write: vi.fn(() => Promise.resolve()),
+      close: vi.fn(() => Promise.resolve()),
+      abort: vi.fn(() => Promise.resolve()),
+    };
+    vi.spyOn(config.localFs, "createFileHandle").mockResolvedValue({
+      createWritable: () => Promise.resolve(mockWriter),
+    } as unknown as FileSystemFileHandle);
+
+    await ft.sendFiles({
+      id: 300,
+      path: "/remote/f",
+      to: "/local/f",
+      fileNum: 0,
+      includeHidden: false,
+      isRemote: true,
+      isDir: false,
+    });
+    ft.handleFileResponse({
+      dir: {
+        id: 300,
+        path: "/remote",
+        entries: [makeFileEntry("file.txt", hbb.FileType.File, 5, 0)],
+      },
+    });
+    ft.handleFileResponse({
+      block: {
+        id: 300,
+        fileNum: 0,
+        data: new Uint8Array([1]),
+        compressed: false,
+        blkId: 0,
+      },
+    });
+    await vi.waitFor(() => expect(mockWriter.write).toHaveBeenCalled());
+    ft.handleFileResponse({
+      error: { id: 300, fileNum: 0, error: "boom" },
+    });
+    await vi.waitFor(() => expect(mockWriter.abort).toHaveBeenCalled());
+  });
 });
