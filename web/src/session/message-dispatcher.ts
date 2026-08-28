@@ -131,6 +131,32 @@ export class MessageDispatcher {
       this.updateDimensionsFromPeerInfo(msg.peerInfo);
       this.callbacks.onGlobalEvent?.(buildPeerInfoEventJson(msg.peerInfo));
       this.callbacks.onPeerInfo?.(msg.peerInfo);
+      // Send connection ready message
+      this.callbacks.onGlobalEvent?.(
+        JSON.stringify({ name: "msgbox", type: "success", title: "Successful", text: "Connected, waiting for image..." }),
+      );
+      // Send initial switch display to confirm resolution
+      if (this.callbacks.sendToPeer) {
+        const pi = msg.peerInfo;
+        const currentDisplay = pi.currentDisplay ?? 0;
+        const displays = pi.displays ?? [];
+        const d = displays[currentDisplay];
+        if (d && d.width && d.height && d.width > 0 && d.height > 0) {
+          const msg = hbb.Message.create({
+            misc: {
+              switchDisplay: {
+                display: currentDisplay,
+                x: d.x ?? 0,
+                y: d.y ?? 0,
+                width: d.width,
+                height: d.height,
+                cursorEmbedded: d.cursorEmbedded ?? false,
+              },
+            },
+          });
+          this.callbacks.sendToPeer(msg);
+        }
+      }
       return;
     }
     if (msg.audioFrame) {
