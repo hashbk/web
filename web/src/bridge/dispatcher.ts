@@ -29,9 +29,11 @@ import {
   setPeerOption,
   getPeerToggleOption,
   setPeerToggleOption,
+  getAllPeers,
 } from "../config/option-store.js";
 import { translate, getLangs, getLocalOption, setLocalOption } from "../i18n/translate.js";
 import { buildPeerInfoEventJson } from "../session/message-dispatcher.js";
+import { cryptoBoxKeypair, base64Encode } from "../crypto/sodium.js";
 
 export interface BridgeConfig extends SessionConfig {
   cursorElement?: HTMLElement;
@@ -60,7 +62,14 @@ export class BridgeDispatcher {
   private favPeers: string[] = [];
   private auditGuid = "";
   private lastAuditNote = "";
-  private accountAuthResult = "";
+  private uuid = "";
+  private accountAuthState = "Requesting account auth";
+  private accountAuthFailedMsg = "";
+  private accountAuthUrl: string | null = null;
+  private accountAuthUrlLaunched = false;
+  private accountAuthBody: unknown = null;
+  private accountAuthKeepQuerying = false;
+  private accountAuthPopup: Window | null = null;
 
   constructor(private config: BridgeConfig) {}
 
@@ -757,9 +766,20 @@ export class BridgeDispatcher {
         return "";
       }
       case "account_auth": {
+        const args = JSON.parse(value) as { op?: string; remember?: boolean };
+        void this.runAccountAuth(args.op ?? "", args.remember ?? false);
         return "";
       }
       case "account_auth_cancel": {
+        this.accountAuthKeepQuerying = false;
+        if (this.accountAuthPopup && !this.accountAuthPopup.closed) {
+          try {
+            this.accountAuthPopup.close();
+          } catch {
+            // ignore
+          }
+        }
+        this.accountAuthPopup = null;
         return "";
       }
       default:
@@ -834,7 +854,7 @@ export class BridgeDispatcher {
         return "web";
       }
       case "uuid": {
-        return "";
+        return this.getOrCreateUuid();
       }
       case "build_date": {
         return "";
@@ -885,16 +905,65 @@ export class BridgeDispatcher {
         return getPeerOption(arg, "password") !== "" ? "true" : "false";
       }
       case "load_recent_peers": {
+        const peers = getAllPeers()
+          .filter((p) => p.tm > 0)
+          .sort((a, b) => b.tm - a.tm)
+          .map((p) => ({
+            id: p.id,
+            username: p.username,
+            hostname: p.hostname,
+            platform: p.platform,
+            alias: p.alias,
+          }));
+        this.config.onRegisteredEvent?.(
+          JSON.stringify({
+            name: "load_recent_peers",
+            peers: JSON.stringify(peers),
+          }),
+        );
         return "";
       }
       case "load_recent_peers_sync": {
-        return JSON.stringify({ peers: "[]" });
+        const peers = getAllPeers()
+          .filter((p) => p.tm > 0)
+          .sort((a, b) => b.tm - a.tm)
+          .map((p) => ({
+            id: p.id,
+            username: p.username,
+            hostname: p.hostname,
+            platform: p.platform,
+            alias: p.alias,
+          }));
+        return JSON.stringify({ peers: JSON.stringify(peers) });
       }
       case "load_fav_peers": {
+        const favSet = new Set(this.favPeers);
+        const peers = getAllPeers()
+          .filter((p) => p.tm > 0 && favSet.has(p.id))
+          .sort((a, b) => b.tm - a.tm)
+          .map((p) => ({
+            id: p.id,
+            username: p.username,
+            hostname: p.hostname,
+            platform: p.platform,
+            alias: p.alias,
+          }));
+        this.config.onRegisteredEvent?.(
+          JSON.stringify({
+            name: "load_fav_peers",
+            peers: JSON.stringify(peers),
+          }),
+        );
         return "";
       }
       case "account_auth_result": {
-        return this.accountAuthResult;
+        return JSON.stringify({
+          state_msg: this.accountAuthState,
+          failed_msg: this.accountAuthFailedMsg,
+          url: this.accountAuthUrl,
+          url_launched: this.accountAuthUrlLaunched,
+          auth_body: this.accountAuthBody,
+        });
       }
       case "enable_trusted_devices": {
         return "N";
@@ -1119,5 +1188,187 @@ export class BridgeDispatcher {
   private getCurrentFileTransfer(): FileTransferManager | null {
     const entry = this.getCurrentSessionEntry();
     return entry ? entry.fileTransfer : null;
+  }
+
+  private getOrCreateUuid(): string {
+    if (this.uuid) return this.uuid;
+    try {
+      const stored = getLocalOption("uuid");
+      if (stored) {
+        this.uuid = stored;
+        return stored;
+      }
+      const keypair = cryptoBoxKeypair();
+      const uuid = base64Encode(keypair.publicKey);
+      setLocalOption("uuid", uuid);
+      this.uuid = uuid;
+      return uuid;
+    } catch {
+      return "";
+    }
+  }
+
+  private async runAccountAuth(op: string, remember: boolean): Promise<void> {
+    const apiServer = deriveApiServer();
+    const myId = "web";
+    const uuid = this.getOrCreateUuid();
+    const QUERY_TIMEOUT_MS = 180_000;
+    const POLL_INTERVAL_MS = 1000;
+
+    this.accountAuthKeepQuerying = false;
+    this.accountAuthState = "Requesting account auth";
+    this.accountAuthFailedMsg = "";
+    this.accountAuthUrl = null;
+    this.accountAuthUrlLaunched = false;
+    this.accountAuthBody = null;
+
+    try {
+      const resp = await fetch(`${apiServer}/api/oidc/auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          op,
+          id: myId,
+          uuid,
+          deviceInfo: {
+            os: "Web",
+            type: "web client",
+            name: navigator.userAgent,
+          },
+        }),
+      });
+      const authResp = await resp.json() as {
+        error?: string;
+        code?: string;
+        url?: string;
+      };
+
+      if (authResp.error) {
+        this.accountAuthFailedMsg = authResp.error;
+        return;
+      }
+      if (!authResp.code || !authResp.url) {
+        this.accountAuthFailedMsg = "Invalid auth response";
+        return;
+      }
+
+      this.accountAuthUrl = authResp.url;
+      this.accountAuthState = "Waiting account auth";
+
+      let popup: Window | null = null;
+      try {
+        popup = window.open(authResp.url, "_blank", "width=400,height=600");
+        if (popup) {
+          popup.focus();
+          this.accountAuthUrlLaunched = true;
+        }
+      } catch {
+        // ignore popup error
+      }
+      this.accountAuthPopup = popup;
+
+      if (!popup) {
+        this.accountAuthFailedMsg =
+          "Popup blocked, please allow popups and try again.";
+        return;
+      }
+
+      this.accountAuthKeepQuerying = true;
+      const startTime = Date.now();
+
+      while (
+        this.accountAuthKeepQuerying &&
+        Date.now() - startTime < QUERY_TIMEOUT_MS
+      ) {
+        try {
+          const queryUrl = new URL(`${apiServer}/api/oidc/auth-query`);
+          queryUrl.searchParams.append("code", authResp.code);
+          queryUrl.searchParams.append("id", myId);
+          queryUrl.searchParams.append("uuid", uuid);
+          const queryResp = await fetch(queryUrl.toString(), {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          });
+          const queryResult = await queryResp.json() as {
+            error?: string;
+            type?: string;
+            access_token?: string;
+            tfa_type?: string;
+            secret?: string;
+            user?: {
+              name?: string;
+              display_name?: string;
+              avatar?: string;
+              email?: string;
+              note?: string;
+              status?: number;
+              is_admin?: boolean;
+            };
+          };
+
+          if (queryResult.error) {
+            if (!queryResult.error.includes("No authed oidc is found")) {
+              this.closeAccountAuthPopup();
+              this.accountAuthState = "Waiting account auth";
+              this.accountAuthFailedMsg = queryResult.error;
+              return;
+            }
+          } else {
+            if (
+              queryResult.type === "access_token" &&
+              queryResult.user &&
+              remember
+            ) {
+              setLocalOption("access_token", queryResult.access_token ?? "");
+              setLocalOption(
+                "user_info",
+                JSON.stringify({
+                  name: queryResult.user.name,
+                  display_name: queryResult.user.display_name,
+                  avatar: queryResult.user.avatar,
+                  status: queryResult.user.status,
+                }),
+              );
+            }
+            this.accountAuthState = "Login account auth";
+            this.accountAuthBody = {
+              access_token: queryResult.access_token,
+              type: queryResult.type,
+              tfa_type: queryResult.tfa_type,
+              secret: queryResult.secret,
+              user: queryResult.user,
+            };
+            this.closeAccountAuthPopup();
+            return;
+          }
+        } catch (e) {
+          console.error("Error querying oidc auth:", e);
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, POLL_INTERVAL_MS),
+        );
+      }
+
+      this.closeAccountAuthPopup();
+      if (Date.now() - startTime >= QUERY_TIMEOUT_MS) {
+        this.accountAuthState = "Waiting account auth";
+        this.accountAuthFailedMsg = "timeout";
+      }
+    } catch (e) {
+      this.closeAccountAuthPopup();
+      this.accountAuthState = "Requesting account auth";
+      this.accountAuthFailedMsg = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  private closeAccountAuthPopup(): void {
+    if (this.accountAuthPopup && !this.accountAuthPopup.closed) {
+      try {
+        this.accountAuthPopup.close();
+      } catch {
+        // ignore
+      }
+    }
+    this.accountAuthPopup = null;
   }
 }

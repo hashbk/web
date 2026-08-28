@@ -174,12 +174,7 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
         return JSON.stringify({ status_num: 0 });
       case "options":
         return getAllOptions();
-      case "fav":
-        return "[]";
-      case "my_id":
-        return "";
-      case "uuid":
-        return "";
+
       case "api_server":
         return deriveApiServer();
       case "image_quality": {
@@ -229,12 +224,8 @@ g["getByName"] = (name: string, ...args: unknown[]): string => {
         }
         return "false";
       }
-      case "load_recent_peers_sync":
-        return "[]";
       case "alternative_codecs":
         return JSON.stringify(getDispatcher().getAlternativeCodecs());
-      case "main_display":
-        return "";
       case "build_date":
         return typeof __BUILD_DATE__ === "string" ? __BUILD_DATE__ : "";
       case "resolve_avatar_url":
