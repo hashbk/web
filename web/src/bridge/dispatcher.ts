@@ -53,8 +53,7 @@ interface SessionEntry {
   isFileTransfer: boolean;
   isViewCamera: boolean;
   isTerminal: boolean;
-  isPortForward: boolean;
-  isRdp: boolean;
+
 }
 
 export class BridgeDispatcher {
@@ -78,8 +77,7 @@ export class BridgeDispatcher {
           is_shared_password?: boolean;
           isFileTransfer?: boolean;
           isViewCamera?: boolean;
-          isPortForward?: boolean;
-          isRdp?: boolean;
+
           isTerminal?: boolean;
           switchUuid?: string;
           forceRelay?: boolean;
@@ -115,8 +113,7 @@ export class BridgeDispatcher {
           isFileTransfer: args.isFileTransfer ?? false,
           isViewCamera: args.isViewCamera ?? false,
           isTerminal: args.isTerminal ?? false,
-          isPortForward: args.isPortForward ?? false,
-          isRdp: args.isRdp ?? false,
+
         });
         this.currentSessionId = id;
         void manager.loadFFmpeg().catch((e) => {
@@ -985,11 +982,7 @@ export class BridgeDispatcher {
         ? ConnType.VIEW_CAMERA
         : entry.isTerminal
           ? ConnType.TERMINAL
-          : entry.isPortForward
-            ? ConnType.PORT_FORWARD
-            : entry.isRdp
-              ? ConnType.RDP
-              : ConnType.DEFAULT_CONN;
+          : ConnType.DEFAULT_CONN;
     await entry.manager.startConnection({
       peerId: entry.peerId,
       password: entry.password,
