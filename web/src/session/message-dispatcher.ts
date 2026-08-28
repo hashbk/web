@@ -73,11 +73,13 @@ export interface MessageDispatcherCallbacks {
   onFileAction?: (fileAction: hbb.IFileAction) => void;
   onMessageBox?: (messageBox: hbb.IMessageBox) => void;
   onDefault?: (msg: hbb.Message) => void;
+  sendToPeer?: (msg: hbb.Message) => void;
 }
 
 export class MessageDispatcher {
   private videoDecoder: VideoDecoderManager;
   private loadedCursorIds = new Set<number>();
+  private firstFrame = false;
 
   constructor(
     videoDecoder: VideoDecoderManager,
@@ -103,9 +105,20 @@ export class MessageDispatcher {
     this.callbacks.onFileResponse = handler;
   }
 
+  setSendToPeer(fn: (msg: hbb.Message) => void): void {
+    this.callbacks.sendToPeer = fn;
+  }
+
   handleMessage(msg: hbb.Message): void {
     if (msg.videoFrame) {
+      if (!this.firstFrame) {
+        this.firstFrame = true;
+        this.callbacks.onGlobalEvent?.(
+          JSON.stringify({ name: "msgbox", type: "", title: "", text: "" }),
+        );
+      }
       this.videoDecoder.decodeVideoFrame(msg.videoFrame);
+      this.sendVideoReceived();
       return;
     }
     if (msg.cursorData) {
@@ -267,6 +280,14 @@ export class MessageDispatcher {
       return;
     }
 
+  }
+
+  private sendVideoReceived(): void {
+    if (!this.callbacks.sendToPeer) return;
+    const msg = hbb.Message.create({
+      misc: { videoReceived: true },
+    });
+    this.callbacks.sendToPeer(msg);
   }
 }
 
