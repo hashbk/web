@@ -10,6 +10,7 @@ import {
   encodeReadAllFiles,
   encodeCancelJob,
   encodeSendConfirm,
+  encodeSendConfirmOffset,
   encodeReadEmptyDirs,
   encodeRenameFile,
 } from "./file-message.js";
@@ -50,8 +51,16 @@ export interface SendFilesParams {
   isDir: boolean;
 }
 
+interface DownloadJob {
+  to: string;
+  files: hbb.IFileEntry[];
+  currentFileNum: number;
+  writer?: FileSystemWritableFileStream;
+}
+
 export class FileTransferManager {
   private jobs = new Map<number, JobProgress>();
+  private downloadJobs = new Map<number, DownloadJob>();
 
 
   constructor(private config: FileTransferConfig) {}
@@ -76,6 +85,7 @@ export class FileTransferManager {
     });
 
     if (isRemote) {
+      this.downloadJobs.set(id, { to, files: [], currentFileNum: -1 });
       this.config.transport.send(
         encodeSendFiles(id, path, fileNum, includeHidden),
       );
@@ -172,6 +182,7 @@ export class FileTransferManager {
       job.state = JobState.Done;
       job.err = "cancel";
     }
+    void this.abortDownloadJob(id);
     this.config.transport.send(encodeCancelJob(id));
   }
 
@@ -268,22 +279,35 @@ export class FileTransferManager {
         fr.dir.entries ?? [],
         false,
       );
+      const dj = this.downloadJobs.get(fr.dir.id ?? 0);
+      if (dj) dj.files = fr.dir.entries ?? [];
+      return;
+    }
+    if (fr.block) {
+      void this.handleDownloadBlock(fr.block).catch((e: unknown) => {
+        console.error("file download block failed:", e);
+      });
       return;
     }
     if (fr.done) {
-      this.emitJobDone(fr.done.id ?? 0, fr.done.fileNum ?? 0);
+      const id = fr.done.id ?? 0;
+      void this.finishDownloadJob(id);
+      this.emitJobDone(id, fr.done.fileNum ?? 0);
       return;
     }
     if (fr.error) {
-      this.emitJobError(
-        fr.error.id ?? 0,
-        fr.error.fileNum ?? 0,
-        fr.error.error ?? "",
-      );
+      const id = fr.error.id ?? 0;
+      void this.abortDownloadJob(id);
+      this.emitJobError(id, fr.error.fileNum ?? 0, fr.error.error ?? "");
       return;
     }
     if (fr.digest) {
       const d = fr.digest;
+      if (!d.isUpload) {
+        this.config.transport.send(
+          encodeSendConfirmOffset(d.id ?? 0, d.fileNum ?? 0),
+        );
+      }
       this.config.onGlobalEvent?.(
         JSON.stringify({
           name: "override_file_confirm",
@@ -296,6 +320,62 @@ export class FileTransferManager {
       );
       return;
     }
+  }
+
+  private async handleDownloadBlock(
+    block: hbb.IFileTransferBlock,
+  ): Promise<void> {
+    const id = block.id ?? 0;
+    const job = this.downloadJobs.get(id);
+    if (!job) return;
+    const fileNum = block.fileNum ?? 0;
+    const file = job.files[fileNum];
+    if (!file) return;
+    let data = block.data ?? new Uint8Array(0);
+    if (block.compressed) {
+      throw new Error("compressed file transfer block is not supported");
+    }
+    if (fileNum !== job.currentFileNum) {
+      if (job.writer) {
+        await job.writer.close();
+        job.writer = undefined;
+      }
+      const fullPath = this.config.localFs.joinPath(job.to, file.name ?? "");
+      const handle = await this.config.localFs.createFileHandle(fullPath);
+      job.writer = await handle.createWritable();
+      job.currentFileNum = fileNum;
+    }
+    if (data.length > 0 && job.writer) {
+      await job.writer.write(data as unknown as BufferSource);
+    }
+  }
+
+  private async finishDownloadJob(id: number): Promise<void> {
+    const job = this.downloadJobs.get(id);
+    if (!job) return;
+    if (job.writer) {
+      try {
+        await job.writer.close();
+      } catch {
+        // ignore close error
+      }
+      job.writer = undefined;
+    }
+    this.downloadJobs.delete(id);
+  }
+
+  private async abortDownloadJob(id: number): Promise<void> {
+    const job = this.downloadJobs.get(id);
+    if (!job) return;
+    if (job.writer) {
+      try {
+        await job.writer.abort();
+      } catch {
+        // ignore abort error
+      }
+      job.writer = undefined;
+    }
+    this.downloadJobs.delete(id);
   }
 
   private emitFileDir(
