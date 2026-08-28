@@ -31,6 +31,10 @@ export interface ConnectParams {
   connType?: ConnType;
 }
 
+export interface LoginOptions {
+  isFileTransfer?: boolean;
+}
+
 export class SessionManager {
   private rendezvous: RendezvousClient;
   private relay: RelayClient;
@@ -97,7 +101,10 @@ export class SessionManager {
     return this.hash;
   }
 
-  async login(password: string): Promise<hbb.IPeerInfo> {
+  async login(
+    password: string,
+    options?: LoginOptions,
+  ): Promise<hbb.IPeerInfo> {
     if (!this.connectParams) throw new Error("not connected");
     if (!this.hash) throw new Error("no hash challenge");
     const connType = this.connectParams.connType ?? ConnType.DEFAULT_CONN;
@@ -111,6 +118,9 @@ export class SessionManager {
       sessionId: this.sessionId,
       salt: this.hash.salt,
       challenge: this.hash.challenge,
+      fileTransfer: options?.isFileTransfer
+        ? { dir: "", showHidden: false }
+        : undefined,
     });
 
     this.installMessageDispatcher();

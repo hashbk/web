@@ -34,6 +34,7 @@ export interface LoginParams {
   sessionId: number;
   salt: string;
   challenge: string;
+  fileTransfer?: { dir: string; showHidden: boolean };
 }
 
 export interface PeerInfo {
@@ -128,6 +129,9 @@ export class RelayClient {
         version: APP_VERSION,
         sessionId: params.sessionId as unknown as never,
         videoAckRequired: false,
+        fileTransfer: params.fileTransfer
+          ? { dir: params.fileTransfer.dir, showHidden: params.fileTransfer.showHidden }
+          : undefined,
       },
     });
     this.transport.send(hbb.Message.encode(loginMsg).finish());
