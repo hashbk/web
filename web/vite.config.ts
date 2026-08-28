@@ -25,8 +25,8 @@ function copyFFmpegFiles(): Plugin {
       const root = dirname(fileURLToPath(import.meta.url));
       const files: Array<[string, string]> = [
         [join(root, "public", "ffmpeg.js"), "ffmpeg.js"],
-        [join(root, "node_modules", "@ffmpeg", "core", "dist", "esm", "ffmpeg-core.js"), "ffmpeg-core.js"],
-        [join(root, "node_modules", "@ffmpeg", "core", "dist", "esm", "ffmpeg-core.wasm"), "ffmpeg-core.wasm"],
+        [join(root, "public", "ffmpeg-core.js"), "ffmpeg-core.js"],
+        [join(root, "public", "ffmpeg-core.wasm"), "ffmpeg-core.wasm"],
       ];
       for (const [src, dest] of files) {
         if (existsSync(src)) {
