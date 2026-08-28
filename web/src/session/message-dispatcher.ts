@@ -80,6 +80,7 @@ export class MessageDispatcher {
   private videoDecoder: VideoDecoderManager;
   private loadedCursorIds = new Set<number>();
   private firstFrame = false;
+  isFileTransfer = false;
 
   constructor(
     videoDecoder: VideoDecoderManager,
@@ -144,6 +145,18 @@ export class MessageDispatcher {
     if (msg.peerInfo) {
       this.updateDimensionsFromPeerInfo(msg.peerInfo);
       this.callbacks.onGlobalEvent?.(buildPeerInfoEventJson(msg.peerInfo));
+      if (!this.isFileTransfer) {
+        this.firstFrame = false;
+        this.callbacks.onGlobalEvent?.(
+          JSON.stringify({
+            name: "msgbox",
+            type: "success",
+            title: "Successful",
+            text: "Connected, waiting for image...",
+            link: "",
+          }),
+        );
+      }
       this.callbacks.onPeerInfo?.(msg.peerInfo);
       return;
     }

@@ -1,5 +1,7 @@
-import { defineConfig } from "vite";
+import { defineConfig, Plugin } from "vite";
 import { fileURLToPath } from "node:url";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const sodiumCjs = fileURLToPath(
   new URL(
@@ -14,6 +16,27 @@ function formatBuildDate(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+function copyFFmpegFiles(): Plugin {
+  return {
+    name: "copy-ffmpeg-files",
+    writeBundle(opts) {
+      const outDir = opts.dir ?? "dist";
+      mkdirSync(outDir, { recursive: true });
+      const root = dirname(fileURLToPath(import.meta.url));
+      const files: Array<[string, string]> = [
+        [join(root, "public", "ffmpeg.js"), "ffmpeg.js"],
+        [join(root, "node_modules", "@ffmpeg", "core", "dist", "esm", "ffmpeg-core.js"), "ffmpeg-core.js"],
+        [join(root, "node_modules", "@ffmpeg", "core", "dist", "esm", "ffmpeg-core.wasm"), "ffmpeg-core.wasm"],
+      ];
+      for (const [src, dest] of files) {
+        if (existsSync(src)) {
+          copyFileSync(src, join(outDir, dest));
+        }
+      }
+    },
+  };
+}
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -23,6 +46,7 @@ export default defineConfig({
   define: {
     __BUILD_DATE__: JSON.stringify(formatBuildDate()),
   },
+  plugins: [copyFFmpegFiles()],
   build: {
     lib: {
       entry: "src/index.ts",

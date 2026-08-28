@@ -98,6 +98,9 @@ export class BridgeDispatcher {
           isFileTransfer: args.isFileTransfer ?? false,
         });
         this.currentSessionId = id;
+        void manager.loadFFmpeg().catch((e) => {
+          console.error("FFmpeg preload failed:", e);
+        });
         return JSON.stringify({ id });
       }
       case "session_start": {
@@ -136,6 +139,7 @@ export class BridgeDispatcher {
         entry.connected = true;
         entry.connecting = false;
         this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
+        this.notifyWaitingForImage(entry);
         this.setupFileTransfer(entry);
         return JSON.stringify(peerInfo);
       }
@@ -534,6 +538,7 @@ export class BridgeDispatcher {
       entry.connected = true;
       entry.connecting = false;
       this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
+      this.notifyWaitingForImage(entry);
       this.setupFileTransfer(entry);
     } else {
       this.config.onGlobalEvent?.(
@@ -546,6 +551,20 @@ export class BridgeDispatcher {
         }),
       );
     }
+  }
+
+  private notifyWaitingForImage(entry: SessionEntry): void {
+    if (entry.isFileTransfer) return;
+    entry.manager.resetFirstFrame();
+    this.config.onGlobalEvent?.(
+      JSON.stringify({
+        name: "msgbox",
+        type: "success",
+        title: "Successful",
+        text: "Connected, waiting for image...",
+        link: "",
+      }),
+    );
   }
 
   private setupFileTransfer(entry: SessionEntry): void {
