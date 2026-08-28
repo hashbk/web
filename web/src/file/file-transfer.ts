@@ -400,8 +400,20 @@ export class FileTransferManager {
     const file = job.files[fileNum];
     if (!file) return;
     const fullPath = this.config.localFs.joinPath(job.path, file.name ?? "");
-    const data = await this.config.localFs.readFile(fullPath);
-    this.config.transport.send(encodeFileBlock(id, fileNum, data));
+    const handle = await this.config.localFs.getFileHandle(fullPath);
+    const fileObj = await handle.getFile();
+    const reader = fileObj.stream().getReader();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value && value.byteLength > 0) {
+          this.config.transport.send(encodeFileBlock(id, fileNum, value));
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   private emitFileDir(
