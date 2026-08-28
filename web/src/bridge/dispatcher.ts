@@ -42,6 +42,7 @@ interface SessionEntry {
   connecting: boolean;
   fileTransfer: FileTransferManager;
   localFs: LocalFileSystem;
+  isFileTransfer: boolean;
 }
 
 export class BridgeDispatcher {
@@ -94,6 +95,7 @@ export class BridgeDispatcher {
           connecting: false,
           fileTransfer,
           localFs,
+          isFileTransfer: args.isFileTransfer ?? false,
         });
         this.currentSessionId = id;
         return JSON.stringify({ id });
@@ -128,7 +130,9 @@ export class BridgeDispatcher {
         };
         const entry = this.getCurrentSessionEntry();
         if (!entry) throw new Error("login: no active session");
-        const peerInfo = await entry.manager.login(args.password ?? "");
+        const peerInfo = await entry.manager.login(args.password ?? "", {
+          isFileTransfer: entry.isFileTransfer,
+        });
         entry.connected = true;
         entry.connecting = false;
         this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
@@ -511,17 +515,22 @@ export class BridgeDispatcher {
   }
 
   private async startSessionConnection(entry: SessionEntry): Promise<void> {
+    const connType = entry.isFileTransfer
+      ? ConnType.FILE_TRANSFER
+      : ConnType.DEFAULT_CONN;
     await entry.manager.startConnection({
       peerId: entry.peerId,
       password: entry.password,
       myId: "",
       myName: "web",
       myPlatform: "Web",
-      connType: ConnType.DEFAULT_CONN,
+      connType,
     });
 
     if (entry.password) {
-      const peerInfo = await entry.manager.login(entry.password);
+      const peerInfo = await entry.manager.login(entry.password, {
+        isFileTransfer: entry.isFileTransfer,
+      });
       entry.connected = true;
       entry.connecting = false;
       this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
