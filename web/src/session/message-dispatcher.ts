@@ -115,7 +115,7 @@ export class MessageDispatcher {
       if (!this.firstFrame) {
         this.firstFrame = true;
         this.callbacks.onGlobalEvent?.(
-          JSON.stringify({ name: "msgbox", type: "", title: "", text: "" }),
+          JSON.stringify({ name: "msgbox", type: "", title: "", text: "", link: "" }),
         );
       }
       this.videoDecoder.decodeVideoFrame(msg.videoFrame);

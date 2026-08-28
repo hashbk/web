@@ -142,6 +142,7 @@ g["setByName"] = (name: string, ...args: unknown[]): string => {
           type: "error",
           title: "Connection Error",
           text: msg,
+          link: "",
         }),
       );
     });
