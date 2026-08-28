@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { hbb } from "../src/proto/index.js";
 import {
+  init as initZstdWasm,
+  compress as zstdCompress,
+} from "@bokuweb/zstd-wasm";
+import {
   FileTransferManager,
   JobState,
   type FileTransferConfig,
@@ -471,6 +475,60 @@ describe("FileTransferManager", () => {
         return p.name === "job_done" && p.id === "100";
       }),
     ).toBe(true);
+  });
+
+  it("download compressed block is decompressed before writing", async () => {
+    await initZstdWasm();
+    const events: string[] = [];
+    const { config, transport } = makeConfig(events);
+    const ft = new FileTransferManager(config);
+
+    const writes: Uint8Array[] = [];
+    const mockWriter = {
+      write: vi.fn((d: Uint8Array) => {
+        writes.push(d);
+        return Promise.resolve();
+      }),
+      close: vi.fn(() => Promise.resolve()),
+      abort: vi.fn(() => Promise.resolve()),
+    };
+    vi.spyOn(config.localFs, "createFileHandle").mockResolvedValue({
+      createWritable: () => Promise.resolve(mockWriter),
+    } as unknown as FileSystemFileHandle);
+
+    await ft.sendFiles({
+      id: 700,
+      path: "/remote/f",
+      to: "/local/f",
+      fileNum: 0,
+      includeHidden: false,
+      isRemote: true,
+      isDir: false,
+    });
+    ft.handleFileResponse({
+      dir: {
+        id: 700,
+        path: "/remote",
+        entries: [makeFileEntry("file.txt", hbb.FileType.File, 3, 0)],
+      },
+    });
+    ft.handleFileResponse({
+      digest: { id: 700, fileNum: 0, isUpload: false, isIdentical: false },
+    });
+    const compressed = zstdCompress(new Uint8Array([1, 2, 3]), 3);
+    ft.handleFileResponse({
+      block: {
+        id: 700,
+        fileNum: 0,
+        data: compressed,
+        compressed: true,
+        blkId: 0,
+      },
+    });
+    await vi.waitFor(() => expect(writes.length).toBe(1));
+    expect(writes[0]).toEqual(new Uint8Array([1, 2, 3]));
+    ft.handleFileResponse({ done: { id: 700, fileNum: 0 } });
+    await vi.waitFor(() => expect(mockWriter.close).toHaveBeenCalled());
   });
 
   it("upload digest with isUpload=true sends confirm", () => {
