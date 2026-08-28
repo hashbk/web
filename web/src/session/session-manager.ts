@@ -33,6 +33,8 @@ export interface ConnectParams {
 
 export interface LoginOptions {
   isFileTransfer?: boolean;
+  isViewCamera?: boolean;
+  isTerminal?: boolean;
 }
 
 export class SessionManager {
@@ -120,6 +122,10 @@ export class SessionManager {
       challenge: this.hash.challenge,
       fileTransfer: options?.isFileTransfer
         ? { dir: "", showHidden: false }
+        : undefined,
+      viewCamera: options?.isViewCamera ? {} : undefined,
+      terminal: options?.isTerminal
+        ? { serviceId: "" }
         : undefined,
     });
 

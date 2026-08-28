@@ -35,6 +35,8 @@ export interface LoginParams {
   salt: string;
   challenge: string;
   fileTransfer?: { dir: string; showHidden: boolean };
+  viewCamera?: Record<string, never>;
+  terminal?: { serviceId: string };
 }
 
 export interface PeerInfo {
@@ -132,6 +134,8 @@ export class RelayClient {
         fileTransfer: params.fileTransfer
           ? { dir: params.fileTransfer.dir, showHidden: params.fileTransfer.showHidden }
           : undefined,
+        viewCamera: params.viewCamera,
+        terminal: params.terminal,
       },
     });
     this.transport.send(hbb.Message.encode(loginMsg).finish());
