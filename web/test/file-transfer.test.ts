@@ -21,6 +21,19 @@ function makeMockLocalFs(): LocalFileSystem {
   return fs;
 }
 
+function makeMockFileHandle(chunks: Uint8Array[]): FileSystemFileHandle {
+  const stream = new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+  return {
+    getFile: () =>
+      Promise.resolve({ stream: () => stream } as unknown as File),
+  } as unknown as FileSystemFileHandle;
+}
+
 function makeConfig(
   events: string[] = [],
 ): { config: FileTransferConfig; transport: ReturnType<typeof makeMockTransport> } {
@@ -476,8 +489,8 @@ describe("FileTransferManager", () => {
     const ft = new FileTransferManager(config);
     const mockFiles = [makeFileEntry("a.txt", hbb.FileType.File, 3, 0)];
     vi.spyOn(config.localFs, "getRecursiveFiles").mockResolvedValue(mockFiles);
-    vi.spyOn(config.localFs, "readFile").mockResolvedValue(
-      new Uint8Array([10, 20, 30]),
+    vi.spyOn(config.localFs, "getFileHandle").mockResolvedValue(
+      makeMockFileHandle([new Uint8Array([10, 20, 30])]),
     );
 
     await ft.sendFiles({
@@ -506,7 +519,9 @@ describe("FileTransferManager", () => {
     expect(
       Array.from(blockMsg.fileResponse!.block!.data as Uint8Array),
     ).toEqual([10, 20, 30]);
-    expect(config.localFs.readFile).toHaveBeenCalledWith("/local/dir/a.txt");
+    expect(config.localFs.getFileHandle).toHaveBeenCalledWith(
+      "/local/dir/a.txt",
+    );
   });
 
   it("upload done clears the upload job so no further block is sent", async () => {
@@ -514,7 +529,9 @@ describe("FileTransferManager", () => {
     const ft = new FileTransferManager(config);
     const mockFiles = [makeFileEntry("a.txt", hbb.FileType.File, 1, 0)];
     vi.spyOn(config.localFs, "getRecursiveFiles").mockResolvedValue(mockFiles);
-    vi.spyOn(config.localFs, "readFile").mockResolvedValue(new Uint8Array([1]));
+    vi.spyOn(config.localFs, "getFileHandle").mockResolvedValue(
+      makeMockFileHandle([new Uint8Array([1])]),
+    );
 
     await ft.sendFiles({
       id: 500,
@@ -535,6 +552,43 @@ describe("FileTransferManager", () => {
       digest: { id: 500, fileNum: 0, isUpload: true, isIdentical: false },
     });
     expect(transport.sent.length).toBe(before + 1);
+  });
+
+  it("upload streams file in multiple chunks as separate blocks", async () => {
+    const { config, transport } = makeConfig();
+    const ft = new FileTransferManager(config);
+    const mockFiles = [makeFileEntry("a.txt", hbb.FileType.File, 6, 0)];
+    vi.spyOn(config.localFs, "getRecursiveFiles").mockResolvedValue(mockFiles);
+    vi.spyOn(config.localFs, "getFileHandle").mockResolvedValue(
+      makeMockFileHandle([
+        new Uint8Array([10, 20]),
+        new Uint8Array([30, 40]),
+        new Uint8Array([50, 60]),
+      ]),
+    );
+
+    await ft.sendFiles({
+      id: 600,
+      path: "/local/dir",
+      to: "/remote/dir",
+      fileNum: 0,
+      includeHidden: false,
+      isRemote: false,
+      isDir: false,
+    });
+    ft.handleFileResponse({
+      digest: { id: 600, fileNum: 0, isUpload: true, isIdentical: false },
+    });
+    await vi.waitFor(() => expect(transport.sent.length).toBe(5));
+    const blocks = transport.sent.slice(2).map((b) => {
+      const m = hbb.Message.decode(b);
+      return Array.from(m.fileResponse!.block!.data as Uint8Array);
+    });
+    expect(blocks).toEqual([
+      [10, 20],
+      [30, 40],
+      [50, 60],
+    ]);
   });
 
   it("download error aborts the writer", async () => {
