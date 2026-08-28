@@ -53,6 +53,9 @@ interface SessionEntry {
   fileTransfer: FileTransferManager;
   localFs: LocalFileSystem;
   isFileTransfer: boolean;
+  isViewCamera: boolean;
+  isTerminal: boolean;
+
 }
 
 export class BridgeDispatcher {
@@ -83,8 +86,7 @@ export class BridgeDispatcher {
           is_shared_password?: boolean;
           isFileTransfer?: boolean;
           isViewCamera?: boolean;
-          isPortForward?: boolean;
-          isRdp?: boolean;
+
           isTerminal?: boolean;
           switchUuid?: string;
           forceRelay?: boolean;
@@ -118,6 +120,9 @@ export class BridgeDispatcher {
           fileTransfer,
           localFs,
           isFileTransfer: args.isFileTransfer ?? false,
+          isViewCamera: args.isViewCamera ?? false,
+          isTerminal: args.isTerminal ?? false,
+
         });
         this.currentSessionId = id;
         void manager.loadFFmpeg().catch((e) => {
@@ -157,6 +162,8 @@ export class BridgeDispatcher {
         if (!entry) throw new Error("login: no active session");
         const peerInfo = await entry.manager.login(args.password ?? "", {
           isFileTransfer: entry.isFileTransfer,
+          isViewCamera: entry.isViewCamera,
+          isTerminal: entry.isTerminal,
         });
         entry.connected = true;
         entry.connecting = false;
@@ -1040,7 +1047,11 @@ export class BridgeDispatcher {
   private async startSessionConnection(entry: SessionEntry): Promise<void> {
     const connType = entry.isFileTransfer
       ? ConnType.FILE_TRANSFER
-      : ConnType.DEFAULT_CONN;
+      : entry.isViewCamera
+        ? ConnType.VIEW_CAMERA
+        : entry.isTerminal
+          ? ConnType.TERMINAL
+          : ConnType.DEFAULT_CONN;
     await entry.manager.startConnection({
       peerId: entry.peerId,
       password: entry.password,
@@ -1053,6 +1064,8 @@ export class BridgeDispatcher {
     if (entry.password) {
       const peerInfo = await entry.manager.login(entry.password, {
         isFileTransfer: entry.isFileTransfer,
+        isViewCamera: entry.isViewCamera,
+        isTerminal: entry.isTerminal,
       });
       entry.connected = true;
       entry.connecting = false;
@@ -1073,7 +1086,7 @@ export class BridgeDispatcher {
   }
 
   private notifyWaitingForImage(entry: SessionEntry): void {
-    if (entry.isFileTransfer) return;
+    if (entry.isFileTransfer || entry.isTerminal || entry.isViewCamera) return;
     entry.manager.resetFirstFrame();
     this.config.onGlobalEvent?.(
       JSON.stringify({
