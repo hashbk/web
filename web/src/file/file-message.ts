@@ -146,6 +146,17 @@ export function encodeSendConfirmOffset(
   return hbb.Message.encode(msg).finish();
 }
 
+export function encodeFileBlock(
+  id: number,
+  fileNum: number,
+  data: Uint8Array,
+): Uint8Array {
+  const msg = hbb.Message.create({
+    fileResponse: { block: { id, fileNum, data, compressed: false } },
+  });
+  return hbb.Message.encode(msg).finish();
+}
+
 export function encodeReadEmptyDirs(
   path: string,
   includeHidden: boolean,
