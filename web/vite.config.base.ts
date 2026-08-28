@@ -44,6 +44,9 @@ export function createBaseConfig(entry: string): UserConfig {
         "libsodium-wrappers-sumo": sodiumCjs,
       },
     },
+    optimizeDeps: {
+      exclude: ["@bokuweb/zstd-wasm"],
+    },
     define: {
       __BUILD_DATE__: JSON.stringify(formatBuildDate()),
     },

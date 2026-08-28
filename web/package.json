@@ -16,6 +16,7 @@
     "inject-web": "bash scripts/inject-web.sh"
   },
   "dependencies": {
+    "@bokuweb/zstd-wasm": "^0.0.27",
     "libsodium-wrappers-sumo": "^0.8.4",
     "protobufjs": "^8.7.2"
   },

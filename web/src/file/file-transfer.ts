@@ -1,5 +1,6 @@
 import { hbb } from "../proto/index.js";
 import { LocalFileSystem } from "./local-fs.js";
+import { initZstd, zstdDecompress } from "./zstd.js";
 import {
   encodeReadDir,
   encodeSendFiles,
@@ -348,8 +349,9 @@ export class FileTransferManager {
     const file = job.files[fileNum];
     if (!file) return;
     let data = block.data ?? new Uint8Array(0);
-    if (block.compressed) {
-      throw new Error("compressed file transfer block is not supported");
+    if (block.compressed && data.length > 0) {
+      await initZstd();
+      data = zstdDecompress(data);
     }
     if (fileNum !== job.currentFileNum) {
       if (job.writer) {

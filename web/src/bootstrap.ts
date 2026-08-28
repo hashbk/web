@@ -1,6 +1,7 @@
 import { BridgeDispatcher } from "./bridge/dispatcher.js";
 import type { BridgeConfig } from "./bridge/dispatcher.js";
 import { initSodium } from "./crypto/sodium.js";
+import { initZstd } from "./file/zstd.js";
 import { DEFAULT_RS_PUB_KEY } from "./constants.js";
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -16,6 +17,10 @@ initSodium()
   .catch((err) => {
     console.error("[rustdesk-web] sodium init failed:", err);
   });
+
+initZstd().catch((err) => {
+  console.error("[rustdesk-web] zstd init failed:", err);
+});
 
 function getDispatcher(): BridgeDispatcher {
   if (!dispatcher) {
