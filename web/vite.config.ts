@@ -1,3 +1,3 @@
-import { createBaseConfig } from "./vite.config.base.js";
+import { createBaseConfig } from "./vite.config.base";
 
 export default createBaseConfig("src/index.ts");
