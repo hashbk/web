@@ -59,7 +59,7 @@ interface SessionEntry {
   isFileTransfer: boolean;
   isViewCamera: boolean;
   isTerminal: boolean;
-
+  remember: boolean;
 }
 
 export class BridgeDispatcher {
@@ -126,7 +126,7 @@ export class BridgeDispatcher {
           isFileTransfer: args.isFileTransfer ?? false,
           isViewCamera: args.isViewCamera ?? false,
           isTerminal: args.isTerminal ?? false,
-
+          remember: false,
         });
         this.currentSessionId = id;
         void manager.loadFFmpeg().catch((e) => {
@@ -164,23 +164,39 @@ export class BridgeDispatcher {
         };
         const entry = this.getCurrentSessionEntry();
         if (!entry) throw new Error("login: no active session");
-        const peerInfo = await entry.manager.login(args.password ?? "", {
-          isFileTransfer: entry.isFileTransfer,
-          isViewCamera: entry.isViewCamera,
-          isTerminal: entry.isTerminal,
-        });
-        entry.connected = true;
-        entry.connecting = false;
-        this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
-        this.notifyWaitingForImage(entry);
-        this.setupFileTransfer(entry);
-        return JSON.stringify(peerInfo);
+        entry.remember = args.remember ?? false;
+        try {
+          const peerInfo = await entry.manager.login(args.password ?? "", {
+            isFileTransfer: entry.isFileTransfer,
+            isViewCamera: entry.isViewCamera,
+            isTerminal: entry.isTerminal,
+          });
+          entry.connected = true;
+          entry.connecting = false;
+          if (entry.remember && args.password) {
+            setPeerOption(entry.peerId, "password", args.password);
+          }
+          this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
+          this.notifyWaitingForImage(entry);
+          this.setupFileTransfer(entry);
+          return JSON.stringify(peerInfo);
+        } catch (err) {
+          this.handleLoginError(err);
+          return "";
+        }
       }
       case "session_close": {
         const args = value ? (JSON.parse(value) as { id?: string }) : {};
-        const entry = args.id ? this.sessions.get(args.id) : undefined;
+        const entry = args.id
+          ? this.sessions.get(args.id)
+          : this.getCurrentSessionEntry();
         entry?.manager.close();
-        if (args.id) this.sessions.delete(args.id);
+        if (args.id) {
+          this.sessions.delete(args.id);
+        } else if (entry && this.currentSessionId) {
+          this.sessions.delete(this.currentSessionId);
+          this.currentSessionId = null;
+        }
         return "";
       }
       case "reconnect": {
@@ -756,6 +772,7 @@ export class BridgeDispatcher {
           entry.manager.close();
           this.sessions.delete(value);
         }
+        this.removePeerOptions(value);
         return "";
       }
       case "save_ab": {
@@ -837,7 +854,8 @@ export class BridgeDispatcher {
         return getPeerOption(entry.peerId, "image_quality") || "balanced";
       }
       case "remember": {
-        return "false";
+        const entry = this.getCurrentSessionEntry();
+        return entry?.remember ? "true" : "false";
       }
       case "option": {
         return getOption(arg);
@@ -1084,16 +1102,21 @@ export class BridgeDispatcher {
     });
 
     if (entry.password) {
-      const peerInfo = await entry.manager.login(entry.password, {
-        isFileTransfer: entry.isFileTransfer,
-        isViewCamera: entry.isViewCamera,
-        isTerminal: entry.isTerminal,
-      });
-      entry.connected = true;
-      entry.connecting = false;
-      this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
-      this.notifyWaitingForImage(entry);
-      this.setupFileTransfer(entry);
+      try {
+        const peerInfo = await entry.manager.login(entry.password, {
+          isFileTransfer: entry.isFileTransfer,
+          isViewCamera: entry.isViewCamera,
+          isTerminal: entry.isTerminal,
+        });
+        entry.connected = true;
+        entry.connecting = false;
+        this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
+        this.notifyWaitingForImage(entry);
+        this.setupFileTransfer(entry);
+      } catch (err) {
+        entry.connecting = false;
+        this.handleLoginError(err);
+      }
     } else {
       this.config.onGlobalEvent?.(
         JSON.stringify({
@@ -1405,5 +1428,48 @@ export class BridgeDispatcher {
       }
     }
     this.accountAuthPopup = null;
+  }
+
+  private handleLoginError(err: unknown): void {
+    const msg = err instanceof Error ? err.message : String(err);
+    const errorMsg = msg.replace(/^login failed:\s*/, "");
+
+    let type = "error";
+    let title = "Login Error";
+    let text = errorMsg;
+    let link = "";
+
+    if (errorMsg === "Empty Password") {
+      type = "input-password";
+      title = "Password Required";
+      text = "";
+    } else if (errorMsg === "Wrong Password") {
+      type = "re-input-password";
+      title = "Wrong Password";
+      text = "Do you want to enter again?";
+    } else if (errorMsg === "2FA Required" || errorMsg === "Wrong 2FA Code") {
+      type = "input-2fa";
+      title = errorMsg;
+      text = "";
+    }
+
+    this.config.onGlobalEvent?.(
+      JSON.stringify({ name: "msgbox", type, title, text, link }),
+    );
+  }
+
+  private removePeerOptions(peerId: string): void {
+    if (typeof localStorage === "undefined") return;
+    const prefix = `rustdesk:peer:${peerId}:option:`;
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        keysToRemove.push(key);
+      }
+    }
+    for (const key of keysToRemove) {
+      localStorage.removeItem(key);
+    }
   }
 }
