@@ -298,6 +298,51 @@ describe("buildPeerInfoEventJson", () => {
     expect(JSON.parse(parsed.features)).toEqual({});
     expect(JSON.parse(parsed.resolutions)).toEqual([]);
   });
+
+  it("testDelay from server pushes update_quality_status and echoes back", () => {
+    const events: string[] = [];
+    const sent: hbb.Message[] = [];
+    const { dispatcher } = makeDispatcher({
+      onGlobalEvent: (json: string) => events.push(json),
+      sendToPeer: (msg: hbb.Message) => sent.push(msg),
+    });
+    const msg = hbb.Message.create({
+      testDelay: {
+        time: 100,
+        fromClient: false,
+        lastDelay: 50,
+        targetBitrate: 2000000,
+      },
+    });
+    dispatcher.dispatch(hbb.Message.encode(msg).finish());
+    expect(events.length).toBe(1);
+    const parsed = JSON.parse(events[0]);
+    expect(parsed.name).toBe("update_quality_status");
+    expect(parsed.delay).toBe("50");
+    expect(parsed.target_bitrate).toBe("2000000");
+    expect(sent.length).toBe(1);
+    expect(sent[0].testDelay).toBeDefined();
+  });
+
+  it("testDelay from client is ignored", () => {
+    const events: string[] = [];
+    const sent: hbb.Message[] = [];
+    const { dispatcher } = makeDispatcher({
+      onGlobalEvent: (json: string) => events.push(json),
+      sendToPeer: (msg: hbb.Message) => sent.push(msg),
+    });
+    const msg = hbb.Message.create({
+      testDelay: {
+        time: 100,
+        fromClient: true,
+        lastDelay: 50,
+        targetBitrate: 2000000,
+      },
+    });
+    dispatcher.dispatch(hbb.Message.encode(msg).finish());
+    expect(events.length).toBe(0);
+    expect(sent.length).toBe(0);
+  });
 });
 
 describe("buildConnectionReadyEventJson", () => {

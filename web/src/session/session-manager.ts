@@ -195,6 +195,7 @@ export class SessionManager {
   }
 
   close(): void {
+    this.dispatcher?.destroy();
     this.videoDecoder.close();
     this.relay.close();
   }
