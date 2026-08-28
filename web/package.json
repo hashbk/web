@@ -16,7 +16,6 @@
     "inject-web": "bash scripts/inject-web.sh"
   },
   "dependencies": {
-    "@ffmpeg/core": "^0.12.10",
     "libsodium-wrappers-sumo": "^0.8.4",
     "protobufjs": "^8.7.2"
   },

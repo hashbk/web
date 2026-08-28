@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { hbb } from "../src/proto/index.js";
 import { VideoDecoderManager } from "../src/video/video-decoder.js";
 import {
@@ -11,6 +11,16 @@ function makeDispatcher(callbacks: Record<string, (...args: any[]) => void> = {}
   const videoDecoder = new VideoDecoderManager({});
   const dispatcher = new MessageDispatcher(videoDecoder, callbacks);
   return { dispatcher, videoDecoder };
+}
+
+function makeDispatcherWithMockDecoder(
+  callbacks: Record<string, (...args: any[]) => void> = {},
+) {
+  const videoDecoder = new VideoDecoderManager({});
+  const mockDecode = vi.spyOn(videoDecoder, "decodeVideoFrame");
+  mockDecode.mockImplementation(() => {});
+  const dispatcher = new MessageDispatcher(videoDecoder, callbacks);
+  return { dispatcher, videoDecoder, mockDecode };
 }
 
 describe("MessageDispatcher", () => {
@@ -190,6 +200,27 @@ describe("MessageDispatcher", () => {
     expect(msgbox.name).toBe("msgbox");
     expect(msgbox.type).toBe("success");
     expect(msgbox.text).toBe("Connected, waiting for image...");
+    expect(msgbox.link).toBe("");
+  });
+
+  it("emits a link field on the first videoFrame msgbox", () => {
+    const events: string[] = [];
+    const { dispatcher, mockDecode } = makeDispatcherWithMockDecoder({
+      onGlobalEvent: (json: string) => events.push(json),
+    });
+    const msg = hbb.Message.create({
+      videoFrame: {
+        display: 0,
+        vp8s: { frames: [{ data: new Uint8Array([1, 2, 3]), key: true }] },
+      },
+    });
+    dispatcher.dispatch(hbb.Message.encode(msg).finish());
+    expect(mockDecode).toHaveBeenCalled();
+    expect(events.length).toBe(1);
+    const msgbox = JSON.parse(events[0]);
+    expect(msgbox.name).toBe("msgbox");
+    expect(msgbox.type).toBe("");
+    expect(msgbox.link).toBe("");
   });
 
   it("silently ignores audioFrame", () => {

@@ -9,6 +9,13 @@ interface FFmpegWorkerMessage {
   data: unknown;
 }
 
+interface FFmpegDecodeResponse {
+  data: {
+    data: ArrayBuffer;
+    yuvFormat: number;
+  };
+}
+
 export class FFmpegDecoder {
   private worker: Worker | null = null;
   private nextId = 0;
@@ -16,7 +23,7 @@ export class FFmpegDecoder {
     number,
     { resolve: (v: unknown) => void; reject: (e: unknown) => void }
   >();
-  private bufferPool: ArrayBuffer[] = [];
+  private recycledBuffers: ArrayBuffer[] = [];
   private loaded = false;
   private loading: Promise<void> | null = null;
   private baseDir: string;
@@ -42,16 +49,19 @@ export class FFmpegDecoder {
       this.pending.delete(id);
       if (type === "ERROR") {
         entry.reject(data);
-      } else if (type === "DECODE") {
-        const result = data as { data: ArrayBuffer };
-        if (result && result.data) {
-          this.bufferPool.push(result.data);
-          if (this.bufferPool.length > 8) this.bufferPool.shift();
-        }
-        entry.resolve(data);
-      } else {
-        entry.resolve(data);
+        return;
       }
+      if (type === "DECODE") {
+        const resp = data as FFmpegDecodeResponse;
+        const buffer = resp?.data?.data;
+        if (buffer) {
+          this.recycledBuffers.push(buffer);
+          if (this.recycledBuffers.length > 8) {
+            this.recycledBuffers.shift();
+          }
+        }
+      }
+      entry.resolve(data);
     };
     this.worker.onerror = (e) => {
       console.error("[ffmpeg] worker error:", e);
@@ -78,6 +88,14 @@ export class FFmpegDecoder {
   }
 
   private send(type: string, data: unknown): Promise<unknown> {
+    return this.sendWithTransfer(type, data, undefined);
+  }
+
+  private sendWithTransfer(
+    type: string,
+    data: unknown,
+    transfer: Transferable[] | undefined,
+  ): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!this.worker) {
         reject(new Error("FFmpeg worker not initialized"));
@@ -85,48 +103,35 @@ export class FFmpegDecoder {
       }
       const id = this.nextId++;
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, type, data });
+      this.worker.postMessage({ id, type, data }, transfer ?? []);
     });
   }
 
   async decode(codec: number, data: ArrayBuffer): Promise<FFmpegDecodeResult | null> {
     if (!this.loaded || !this.worker) return null;
-    let arrayBuffer: ArrayBuffer | null = null;
-    while (this.bufferPool.length > 0) {
-      const buf = this.bufferPool.pop()!;
-      if (buf.byteLength === data.byteLength) {
-        arrayBuffer = buf;
-        break;
-      }
+
+    let recycled: ArrayBuffer | null = null;
+    if (this.recycledBuffers.length > 0) {
+      recycled = this.recycledBuffers.pop()!;
     }
-    const transferList: ArrayBuffer[] = [data];
-    const sendData: { codec: number; data: ArrayBuffer; arrayBuffer: ArrayBuffer | null } = {
-      codec,
-      data,
-      arrayBuffer,
-    };
-    if (arrayBuffer) transferList.push(arrayBuffer);
 
-    const result = await new Promise<unknown>((resolve, reject) => {
-      if (!this.worker) {
-        reject(new Error("FFmpeg worker not initialized"));
-        return;
-      }
-      const id = this.nextId++;
-      this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, type: "DECODE", data: sendData }, transferList);
-    });
+    const transfer: ArrayBuffer[] = [data];
+    if (recycled) transfer.push(recycled);
 
+    const sendData = { codec, data, arrayBuffer: recycled };
+
+    const result = await this.sendWithTransfer("DECODE", sendData, transfer);
     if (!result) return null;
-    const decoded = result as { data: ArrayBuffer; yuvFormat: number };
-    if (!decoded.data) return null;
-    return { data: decoded.data, yuvFormat: decoded.yuvFormat ?? 0 };
+
+    const resp = result as FFmpegDecodeResponse;
+    if (!resp?.data?.data) return null;
+    return { data: resp.data.data, yuvFormat: resp.data.yuvFormat ?? 0 };
   }
 
   close(): void {
     if (this.worker) {
       try {
-        this.send("CLOSE", {});
+        void this.send("CLOSE", {});
       } catch {
         // ignore
       }
@@ -136,7 +141,7 @@ export class FFmpegDecoder {
     this.loaded = false;
     this.loading = null;
     this.pending.clear();
-    this.bufferPool = [];
+    this.recycledBuffers = [];
   }
 
   isLoaded(): boolean {
