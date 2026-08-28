@@ -8,13 +8,7 @@ export interface WebCodecsCallbacks {
 type Nalu = Uint8Array;
 
 const H264_NAL_TYPE_MASK = 0x1f;
-const H264_NAL_SPS = 7;
-const H264_NAL_PPS = 8;
-
 const H265_NAL_TYPE_MASK = 0x3f;
-const H265_NAL_VPS = 32;
-const H265_NAL_SPS = 33;
-const H265_NAL_PPS = 34;
 
 
 export function splitNalus(data: Uint8Array): Nalu[] {
@@ -180,35 +174,43 @@ export function h265CodecString(sps: Uint8Array): string {
   return "hev1.1.6.L93.B0";
 }
 
-interface DecoderEntry {
-  decoder: any;
-  configured: boolean;
-  codec: string;
-  description?: Uint8Array;
+import { FFmpegDecoder } from "./ffmpeg-decoder.js";
+
+const CODEC_VP8 = 0;
+const CODEC_VP9 = 1;
+const CODEC_AV1 = 2;
+const CODEC_H264 = 3;
+const CODEC_H265 = 4;
+
+interface QueuedFrame {
+  display: number;
+  codec: number;
+  data: ArrayBuffer;
 }
 
 export class VideoDecoderManager {
-  private decoders = new Map<number, DecoderEntry>();
-  private width = 0;
-  private height = 0;
+  private ffmpeg: FFmpegDecoder;
+
   private supportedEncoding: { h264: boolean; h265: boolean; vp8: boolean; av1: boolean } = {
     h264: false, h265: false, vp8: false, av1: false,
   };
-  private decoderCaps: { h264: boolean; h265: boolean; vp8: boolean; av1: boolean } = {
-    h264: false, h265: false, vp8: false, av1: false,
-  };
-  private capsChecked = false;
-  private dimsWarned = false;
+  private videoQueue: QueuedFrame[] = [];
+  private decoding = false;
 
-  constructor(private callbacks: WebCodecsCallbacks = {}) {}
+  constructor(private callbacks: WebCodecsCallbacks = {}) {
+    this.ffmpeg = new FFmpegDecoder(".");
+  }
 
-  setDimensions(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
-    if (!this.capsChecked) {
-      this.capsChecked = true;
-      this.checkDecoderCapabilities();
+  async loadFFmpeg(): Promise<void> {
+    try {
+      await this.ffmpeg.load();
+    } catch (e) {
+      console.error("[ffmpeg] load failed:", e);
     }
+  }
+
+  setDimensions(_width: number, _height: number): void {
+    // FFmpeg handles dimensions internally; kept for API compatibility.
   }
 
   setSupportedEncoding(enc: hbb.ISupportedEncoding): void {
@@ -222,242 +224,79 @@ export class VideoDecoderManager {
 
   getAlternativeCodecs(): { vp8: boolean; av1: boolean; h264: boolean; h265: boolean } {
     return {
-      vp8: this.decoderCaps.vp8 && this.supportedEncoding.vp8,
-      av1: this.decoderCaps.av1 && this.supportedEncoding.av1,
-      h264: this.decoderCaps.h264 && this.supportedEncoding.h264,
-      h265: this.decoderCaps.h265 && this.supportedEncoding.h265,
+      vp8: this.supportedEncoding.vp8,
+      av1: this.supportedEncoding.av1,
+      h264: this.supportedEncoding.h264,
+      h265: this.supportedEncoding.h265,
     };
-  }
-
-  private checkDecoderCapabilities(): void {
-    const VD = (globalThis as any).VideoDecoder;
-    if (!VD || typeof VD.isConfigSupported !== "function") {
-      this.decoderCaps = { h264: true, h265: false, vp8: true, av1: false };
-      return;
-    }
-    const w = this.width || 1920;
-    const h = this.height || 1080;
-    const codecs: Array<[keyof typeof this.decoderCaps, string]> = [
-      ["h264", "avc1.42c01e"],
-      ["h265", "hev1.1.6.L93.B0"],
-      ["vp8", "vp8"],
-      ["av1", "av01.0.04M.08"],
-    ];
-    for (const [key, codec] of codecs) {
-      VD.isConfigSupported({ codec, codedWidth: w, codedHeight: h })
-        .then((result: { supported?: boolean }) => {
-          this.decoderCaps[key] = result?.supported === true;
-        })
-        .catch(() => {
-          this.decoderCaps[key] = false;
-        });
-    }
   }
 
   decodeVideoFrame(videoFrame: hbb.IVideoFrame): void {
     const display = videoFrame.display ?? 0;
+    let codec: number;
+    let frames: hbb.IEncodedVideoFrame[];
 
-    if (videoFrame.vp9s?.frames) {
-      this.decodeEncodedFrames(display, "vp9", videoFrame.vp9s.frames, undefined);
-    } else if (videoFrame.vp8s?.frames) {
-      this.decodeEncodedFrames(display, "vp8", videoFrame.vp8s.frames, undefined);
+    if (videoFrame.vp8s?.frames) {
+      codec = CODEC_VP8;
+      frames = videoFrame.vp8s.frames;
+    } else if (videoFrame.vp9s?.frames) {
+      codec = CODEC_VP9;
+      frames = videoFrame.vp9s.frames;
     } else if (videoFrame.av1s?.frames) {
-      this.decodeEncodedFrames(display, "av1", videoFrame.av1s.frames, undefined);
+      codec = CODEC_AV1;
+      frames = videoFrame.av1s.frames;
     } else if (videoFrame.h264s?.frames) {
-      this.decodeH264Frames(display, videoFrame.h264s.frames);
+      codec = CODEC_H264;
+      frames = videoFrame.h264s.frames;
     } else if (videoFrame.h265s?.frames) {
-      this.decodeH265Frames(display, videoFrame.h265s.frames);
+      codec = CODEC_H265;
+      frames = videoFrame.h265s.frames;
+    } else {
+      return;
+    }
 
+    for (const frame of frames) {
+      const raw = frame.data as Uint8Array;
+      const copy = new ArrayBuffer(raw.length);
+      new Uint8Array(copy).set(raw);
+      this.videoQueue.push({ display, codec, data: copy });
+    }
+
+    if (!this.decoding) {
+      void this.processQueue();
     }
   }
 
-  private decodeEncodedFrames(
-    display: number,
-    codec: string,
-    frames: hbb.IEncodedVideoFrame[],
-    description: Uint8Array | undefined,
-  ): void {
-    const entry = this.getOrCreateDecoder(display, codec, description);
-    if (!entry) return;
-
-    for (const frame of frames) {
-      this.feedChunk(entry, frame, false);
-    }
-  }
-
-  private decodeH264Frames(
-    display: number,
-    frames: hbb.IEncodedVideoFrame[],
-  ): void {
-    let sps: Uint8Array | undefined;
-    let pps: Uint8Array | undefined;
-
-    for (const frame of frames) {
-      const data = frame.data as Uint8Array;
-      const nalus = splitNalus(data);
-      for (const nalu of nalus) {
-        const type = h264NalType(nalu);
-        if (type === H264_NAL_SPS) sps = nalu;
-        else if (type === H264_NAL_PPS) pps = nalu;
-      }
-    }
-
-    let description: Uint8Array | undefined;
-    let codec = "avc1.42c01e";
-    if (sps && pps) {
-      description = buildAvcC(sps, pps);
-      codec = h264CodecString(sps);
-    }
-
-    const entry = this.getOrCreateDecoder(display, codec, description);
-    if (!entry) return;
-
-    for (const frame of frames) {
-      this.feedChunk(entry, frame, true);
-    }
-  }
-
-  private decodeH265Frames(
-    display: number,
-    frames: hbb.IEncodedVideoFrame[],
-  ): void {
-    let vps: Uint8Array | undefined;
-    let sps: Uint8Array | undefined;
-    let pps: Uint8Array | undefined;
-
-    for (const frame of frames) {
-      const data = frame.data as Uint8Array;
-      const nalus = splitNalus(data);
-      for (const nalu of nalus) {
-        const type = h265NalType(nalu);
-        if (type === H265_NAL_VPS) vps = nalu;
-        else if (type === H265_NAL_SPS) sps = nalu;
-        else if (type === H265_NAL_PPS) pps = nalu;
-      }
-    }
-
-    let description: Uint8Array | undefined;
-    let codec = "hev1.1.6.L93.B0";
-    if (vps && sps && pps) {
-      description = buildHevC(vps, sps, pps);
-      codec = h265CodecString(sps);
-    }
-
-    const entry = this.getOrCreateDecoder(display, codec, description);
-    if (!entry) return;
-
-    for (const frame of frames) {
-      this.feedChunk(entry, frame, true);
-    }
-  }
-
-  private getOrCreateDecoder(
-    display: number,
-    codec: string,
-    description: Uint8Array | undefined,
-  ): DecoderEntry | null {
-    let entry = this.decoders.get(display);
-    if (entry && entry.configured && entry.codec !== codec) {
-      this.closeDecoder(display);
-      entry = undefined;
-    }
-
-    if (!entry) {
-      const decoderCtor = (globalThis as any).VideoDecoder;
-      if (!decoderCtor) return null;
-
-      const decoder = new decoderCtor({
-        output: (frame: any) => {
-          if (this.callbacks.onVideoFrame) {
-            this.callbacks.onVideoFrame(display, frame);
-          } else {
-            frame.close?.();
-          }
-        },
-        error: (e: Error) => {
-          console.error(`VideoDecoder error (display ${display}):`, e);
-        },
-      });
-
-      entry = { decoder, configured: false, codec, description };
-      this.decoders.set(display, entry);
-    }
-
-    if (!entry.configured) {
-      if (this.width <= 0 || this.height <= 0) {
-        if (!this.dimsWarned) {
-          this.dimsWarned = true;
-          console.warn(
-            `[rustdesk-web] VideoDecoder: dropping frames — dimensions not set (width=${this.width}, height=${this.height}). ` +
-              `Waiting for peerInfo/switchDisplay to set dimensions.`,
-          );
-        }
-        return null;
-      }
-      const config: Record<string, unknown> = {
-        codec,
-        codedWidth: this.width,
-        codedHeight: this.height,
-        optimizeForLatency: true,
-      };
-      if (description) config.description = description;
-
-      try {
-        entry.decoder.configure(config);
-        entry.configured = true;
-        entry.codec = codec;
-        entry.description = description;
-      } catch (e) {
-        console.error(`VideoDecoder configure failed (display ${display}):`, e);
-        return null;
-      }
-    }
-
-    return entry;
-  }
-
-  private feedChunk(
-    entry: DecoderEntry,
-    frame: hbb.IEncodedVideoFrame,
-    convertAnnexB: boolean,
-  ): void {
-    let data = frame.data as Uint8Array;
-    if (convertAnnexB) {
-      data = annexBToLengthPrefix(data);
-    }
-
-    const chunkCtor = (globalThis as any).EncodedVideoChunk;
-    if (!chunkCtor) return;
-
-    const chunk = new chunkCtor({
-      type: frame.key ? "key" : "delta",
-      timestamp: frame.pts ?? 0,
-      data,
-    });
-
+  private async processQueue(): Promise<void> {
+    this.decoding = true;
     try {
-      entry.decoder.decode(chunk);
+      if (!this.ffmpeg.isLoaded()) {
+        await this.loadFFmpeg();
+      }
+      while (this.videoQueue.length > 0) {
+        await this.decodeOne(this.videoQueue.shift()!);
+      }
     } catch (e) {
-      console.error("VideoDecoder decode failed:", e);
+      console.error("[ffmpeg] processQueue failed:", e);
     }
+    this.decoding = false;
   }
 
-
-  private closeDecoder(display: number): void {
-    const entry = this.decoders.get(display);
-    if (entry) {
-      try {
-        entry.decoder.close();
-      } catch {
-        // ignore
+  private async decodeOne(item: QueuedFrame): Promise<void> {
+    try {
+      const result = await this.ffmpeg.decode(item.codec, item.data);
+      if (result && result.data) {
+        const rgba = new Uint8Array(result.data);
+        this.callbacks.onRgba?.(item.display, rgba);
       }
-      this.decoders.delete(display);
+    } catch (e) {
+      console.error("[ffmpeg] decode failed:", e);
     }
   }
 
   close(): void {
-    for (const display of this.decoders.keys()) {
-      this.closeDecoder(display);
-    }
+    this.videoQueue = [];
+    this.decoding = false;
+    this.ffmpeg.close();
   }
 }

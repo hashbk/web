@@ -123,8 +123,34 @@ export class SessionManager {
         : undefined,
     });
 
+    this.applyPeerInfo(peerInfo);
+    if (this.dispatcher) {
+      this.dispatcher.isFileTransfer = options?.isFileTransfer ?? false;
+    }
     this.installMessageDispatcher();
     return peerInfo;
+  }
+
+  private applyPeerInfo(pi: hbb.IPeerInfo): void {
+    const displays = pi.displays ?? [];
+    const idx = pi.currentDisplay ?? 0;
+    const d = displays[idx];
+    if (d) {
+      const w = d.width ?? 0;
+      const h = d.height ?? 0;
+      if (w > 0 && h > 0) {
+        this.videoDecoder.setDimensions(w, h);
+      }
+    }
+    if (pi.encoding) {
+      this.videoDecoder.setSupportedEncoding(pi.encoding);
+    }
+  }
+
+  resetFirstFrame(): void {
+    if (this.dispatcher) {
+      (this.dispatcher as any).firstFrame = false;
+    }
   }
 
   private installMessageDispatcher(): void {
@@ -144,6 +170,10 @@ export class SessionManager {
 
   getVideoDecoder(): VideoDecoderManager {
     return this.videoDecoder;
+  }
+
+  loadFFmpeg(): Promise<void> {
+    return this.videoDecoder.loadFFmpeg();
   }
 
   setFileResponseHandler(

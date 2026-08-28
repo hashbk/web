@@ -172,7 +172,7 @@ describe("MessageDispatcher", () => {
       },
     });
     dispatcher.dispatch(hbb.Message.encode(msg).finish());
-    expect(events.length).toBe(1);
+    expect(events.length).toBe(2);
     const parsed = JSON.parse(events[0]);
     expect(parsed.name).toBe("peer_info");
     expect(parsed.username).toBe("user1");
@@ -186,6 +186,10 @@ describe("MessageDispatcher", () => {
     expect(displays[0].height).toBe(1080);
     const features = JSON.parse(parsed.features);
     expect(features.privacy_mode).toBe(false);
+    const msgbox = JSON.parse(events[1]);
+    expect(msgbox.name).toBe("msgbox");
+    expect(msgbox.type).toBe("success");
+    expect(msgbox.text).toBe("Connected, waiting for image...");
   });
 
   it("silently ignores audioFrame", () => {
