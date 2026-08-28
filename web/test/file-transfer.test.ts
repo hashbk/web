@@ -460,13 +460,81 @@ describe("FileTransferManager", () => {
     ).toBe(true);
   });
 
-  it("download digest with isUpload=true does not send confirm", () => {
+  it("upload digest with isUpload=true sends confirm", () => {
     const { config, transport } = makeConfig();
     const ft = new FileTransferManager(config);
     ft.handleFileResponse({
       digest: { id: 200, fileNum: 0, isUpload: true, isIdentical: false },
     });
-    expect(transport.sent.length).toBe(0);
+    const confirmAction = decodeFileAction(transport.sent[0]);
+    expect(confirmAction.sendConfirm).toBeDefined();
+    expect(confirmAction.sendConfirm!.offsetBlk).toBe(0);
+  });
+
+  it("upload flow: receive sent, digest confirms and uploads file data", async () => {
+    const { config, transport } = makeConfig();
+    const ft = new FileTransferManager(config);
+    const mockFiles = [makeFileEntry("a.txt", hbb.FileType.File, 3, 0)];
+    vi.spyOn(config.localFs, "getRecursiveFiles").mockResolvedValue(mockFiles);
+    vi.spyOn(config.localFs, "readFile").mockResolvedValue(
+      new Uint8Array([10, 20, 30]),
+    );
+
+    await ft.sendFiles({
+      id: 400,
+      path: "/local/dir",
+      to: "/remote/dir",
+      fileNum: 0,
+      includeHidden: false,
+      isRemote: false,
+      isDir: false,
+    });
+    expect(decodeFileAction(transport.sent[0]).receive).toBeDefined();
+
+    ft.handleFileResponse({
+      digest: { id: 400, fileNum: 0, isUpload: true, isIdentical: false },
+    });
+    await vi.waitFor(() => expect(transport.sent.length).toBe(3));
+    const confirmAction = decodeFileAction(transport.sent[1]);
+    expect(confirmAction.sendConfirm).toBeDefined();
+    expect(confirmAction.sendConfirm!.offsetBlk).toBe(0);
+    const blockMsg = hbb.Message.decode(transport.sent[2]);
+    expect(blockMsg.fileResponse).toBeDefined();
+    expect(blockMsg.fileResponse!.block).toBeDefined();
+    expect(blockMsg.fileResponse!.block!.id).toBe(400);
+    expect(blockMsg.fileResponse!.block!.fileNum).toBe(0);
+    expect(
+      Array.from(blockMsg.fileResponse!.block!.data as Uint8Array),
+    ).toEqual([10, 20, 30]);
+    expect(config.localFs.readFile).toHaveBeenCalledWith("/local/dir/a.txt");
+  });
+
+  it("upload done clears the upload job so no further block is sent", async () => {
+    const { config, transport } = makeConfig();
+    const ft = new FileTransferManager(config);
+    const mockFiles = [makeFileEntry("a.txt", hbb.FileType.File, 1, 0)];
+    vi.spyOn(config.localFs, "getRecursiveFiles").mockResolvedValue(mockFiles);
+    vi.spyOn(config.localFs, "readFile").mockResolvedValue(new Uint8Array([1]));
+
+    await ft.sendFiles({
+      id: 500,
+      path: "/local/dir",
+      to: "/remote/dir",
+      fileNum: 0,
+      includeHidden: false,
+      isRemote: false,
+      isDir: false,
+    });
+    ft.handleFileResponse({
+      digest: { id: 500, fileNum: 0, isUpload: true, isIdentical: false },
+    });
+    await vi.waitFor(() => expect(transport.sent.length).toBe(3));
+    ft.handleFileResponse({ done: { id: 500, fileNum: 0 } });
+    const before = transport.sent.length;
+    ft.handleFileResponse({
+      digest: { id: 500, fileNum: 0, isUpload: true, isIdentical: false },
+    });
+    expect(transport.sent.length).toBe(before + 1);
   });
 
   it("download error aborts the writer", async () => {

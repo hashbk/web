@@ -11,6 +11,7 @@ import {
   encodeCancelJob,
   encodeSendConfirm,
   encodeSendConfirmOffset,
+  encodeFileBlock,
   encodeReadEmptyDirs,
   encodeRenameFile,
 } from "./file-message.js";
@@ -58,9 +59,15 @@ interface DownloadJob {
   writer?: FileSystemWritableFileStream;
 }
 
+interface UploadJob {
+  path: string;
+  files: hbb.IFileEntry[];
+}
+
 export class FileTransferManager {
   private jobs = new Map<number, JobProgress>();
   private downloadJobs = new Map<number, DownloadJob>();
+  private uploadJobs = new Map<number, UploadJob>();
 
 
   constructor(private config: FileTransferConfig) {}
@@ -103,6 +110,7 @@ export class FileTransferManager {
       );
       const job = this.jobs.get(id);
       if (job) job.totalSize = totalSize;
+      this.uploadJobs.set(id, { path, files });
     }
   }
 
@@ -183,6 +191,7 @@ export class FileTransferManager {
       job.err = "cancel";
     }
     void this.abortDownloadJob(id);
+    this.uploadJobs.delete(id);
     this.config.transport.send(encodeCancelJob(id));
   }
 
@@ -292,20 +301,27 @@ export class FileTransferManager {
     if (fr.done) {
       const id = fr.done.id ?? 0;
       void this.finishDownloadJob(id);
+      this.uploadJobs.delete(id);
       this.emitJobDone(id, fr.done.fileNum ?? 0);
       return;
     }
     if (fr.error) {
       const id = fr.error.id ?? 0;
       void this.abortDownloadJob(id);
+      this.uploadJobs.delete(id);
       this.emitJobError(id, fr.error.fileNum ?? 0, fr.error.error ?? "");
       return;
     }
     if (fr.digest) {
       const d = fr.digest;
-      if (!d.isUpload) {
-        this.config.transport.send(
-          encodeSendConfirmOffset(d.id ?? 0, d.fileNum ?? 0),
+      this.config.transport.send(
+        encodeSendConfirmOffset(d.id ?? 0, d.fileNum ?? 0),
+      );
+      if (d.isUpload) {
+        void this.sendUploadBlock(d.id ?? 0, d.fileNum ?? 0).catch(
+          (e: unknown) => {
+            console.error("file upload block failed:", e);
+          },
         );
       }
       this.config.onGlobalEvent?.(
@@ -376,6 +392,16 @@ export class FileTransferManager {
       job.writer = undefined;
     }
     this.downloadJobs.delete(id);
+  }
+
+  private async sendUploadBlock(id: number, fileNum: number): Promise<void> {
+    const job = this.uploadJobs.get(id);
+    if (!job) return;
+    const file = job.files[fileNum];
+    if (!file) return;
+    const fullPath = this.config.localFs.joinPath(job.path, file.name ?? "");
+    const data = await this.config.localFs.readFile(fullPath);
+    this.config.transport.send(encodeFileBlock(id, fileNum, data));
   }
 
   private emitFileDir(
