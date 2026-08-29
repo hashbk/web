@@ -206,6 +206,10 @@ export class MessageDispatcher {
     if (msg.switchSidesResponse) {
       return;
     }
+    if (msg.loginResponse) {
+      this.handleLoginResponse(msg.loginResponse);
+      return;
+    }
     if (msg.testDelay) {
       this.handleTestDelay(msg.testDelay);
       return;
@@ -328,6 +332,34 @@ export class MessageDispatcher {
       misc: { videoReceived: true },
     });
     this.callbacks.sendToPeer(msg);
+  }
+
+  private handleLoginResponse(lr: hbb.ILoginResponse): void {
+    if (lr.error) {
+      this.callbacks.onGlobalEvent?.(
+        JSON.stringify({
+          name: "msgbox",
+          type: "error",
+          title: "Login Error",
+          text: lr.error,
+          link: "",
+        }),
+      );
+      return;
+    }
+    if (lr.peerInfo) {
+      this.updateDimensionsFromPeerInfo(lr.peerInfo);
+      this.callbacks.onGlobalEvent?.(buildPeerInfoEventJson(lr.peerInfo));
+      this.callbacks.onGlobalEvent?.(
+        JSON.stringify({
+          name: "msgbox",
+          type: "success",
+          title: "Successful",
+          text: "Connected, waiting for image...",
+          link: "",
+        }),
+      );
+    }
   }
 
   private handleTestDelay(td: hbb.ITestDelay): void {

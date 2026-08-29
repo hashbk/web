@@ -172,11 +172,16 @@ export class BridgeDispatcher {
         if (!entry) throw new Error("login: no active session");
         entry.remember = args.remember ?? false;
         try {
-          const peerInfo = await entry.manager.login(args.password ?? "", {
+          const result = await entry.manager.login(args.password ?? "", {
             isFileTransfer: entry.isFileTransfer,
             isViewCamera: entry.isViewCamera,
             isTerminal: entry.isTerminal,
           });
+          if (result.error) {
+            this.handleLoginError(new Error(`login failed: ${result.error}`));
+            return "";
+          }
+          const peerInfo = result.peerInfo!;
           entry.connected = true;
           entry.connecting = false;
           if (entry.remember && args.password) {
@@ -1133,33 +1138,27 @@ export class BridgeDispatcher {
       connType,
     });
 
-    if (entry.password) {
-      try {
-        const peerInfo = await entry.manager.login(entry.password, {
-          isFileTransfer: entry.isFileTransfer,
-          isViewCamera: entry.isViewCamera,
-          isTerminal: entry.isTerminal,
-        });
-        entry.connected = true;
+    try {
+      const result = await entry.manager.login(entry.password, {
+        isFileTransfer: entry.isFileTransfer,
+        isViewCamera: entry.isViewCamera,
+        isTerminal: entry.isTerminal,
+      });
+      if (result.error) {
         entry.connecting = false;
-        this.persistPeerInfo(entry.peerId, peerInfo);
-        this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
-        this.notifyWaitingForImage(entry);
-        this.setupFileTransfer(entry);
-      } catch (err) {
-        entry.connecting = false;
-        this.handleLoginError(err);
+        this.handleLoginError(new Error(`login failed: ${result.error}`));
+        return;
       }
-    } else {
-      this.config.onGlobalEvent?.(
-        JSON.stringify({
-          name: "msgbox",
-          type: "input-password",
-          title: "Password Required",
-          text: "",
-          link: "",
-        }),
-      );
+      const peerInfo = result.peerInfo!;
+      entry.connected = true;
+      entry.connecting = false;
+      this.persistPeerInfo(entry.peerId, peerInfo);
+      this.config.onGlobalEvent?.(buildPeerInfoEventJson(peerInfo));
+      this.notifyWaitingForImage(entry);
+      this.setupFileTransfer(entry);
+    } catch (err) {
+      entry.connecting = false;
+      this.handleLoginError(err);
     }
   }
 
@@ -1493,6 +1492,10 @@ export class BridgeDispatcher {
       type = "input-2fa";
       title = errorMsg;
       text = "";
+    } else if (errorMsg === "No Password Access") {
+      type = "wait-remote-accept-nook";
+      title = "Prompt";
+      text = "Please wait for the remote side to accept your session request...";
     }
 
     this.config.onGlobalEvent?.(
