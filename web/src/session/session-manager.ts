@@ -114,11 +114,11 @@ export class SessionManager {
   async login(
     password: string,
     options?: LoginOptions,
-  ): Promise<hbb.IPeerInfo> {
+  ): Promise<{ peerInfo?: hbb.IPeerInfo; error?: string }> {
     if (!this.connectParams) throw new Error("not connected");
     if (!this.hash) throw new Error("no hash challenge");
     const connType = this.connectParams.connType ?? ConnType.DEFAULT_CONN;
-    const peerInfo = await this.relay.login({
+    const result = await this.relay.login({
       peerId: this.connectParams.peerId,
       password,
       myId: this.connectParams.myId,
@@ -137,12 +137,18 @@ export class SessionManager {
         : undefined,
     });
 
+    if (result.error) {
+      this.installMessageDispatcher();
+      return { error: result.error };
+    }
+
+    const peerInfo = result.peerInfo!;
     this.applyPeerInfo(peerInfo);
     if (this.dispatcher) {
       this.dispatcher.isFileTransfer = options?.isFileTransfer ?? false;
     }
     this.installMessageDispatcher();
-    return peerInfo;
+    return { peerInfo };
   }
 
   private applyPeerInfo(pi: hbb.IPeerInfo): void {

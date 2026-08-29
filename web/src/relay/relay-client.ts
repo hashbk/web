@@ -39,11 +39,9 @@ export interface LoginParams {
   terminal?: { serviceId: string };
 }
 
-export interface PeerInfo {
-  username: string;
-  hostname: string;
-  platform: string;
-  version: string;
+export interface LoginResult {
+  peerInfo?: hbb.IPeerInfo;
+  error?: string;
 }
 
 export class RelayClient {
@@ -113,7 +111,7 @@ export class RelayClient {
     };
   }
 
-  async login(params: LoginParams): Promise<hbb.IPeerInfo> {
+  async login(params: LoginParams): Promise<LoginResult> {
     if (!this.transport) throw new Error("relay not connected");
     const password = await computePassword(
       params.password,
@@ -149,10 +147,10 @@ export class RelayClient {
     }
     if (respMsg.loginResponse) {
       if (respMsg.loginResponse.error) {
-        throw new Error(`login failed: ${respMsg.loginResponse.error}`);
+        return { error: respMsg.loginResponse.error };
       }
       if (respMsg.loginResponse.peerInfo) {
-        return respMsg.loginResponse.peerInfo;
+        return { peerInfo: respMsg.loginResponse.peerInfo };
       }
     }
     throw new Error("login: unexpected response");
