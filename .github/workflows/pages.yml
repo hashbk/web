@@ -11,6 +11,7 @@ on:
       - 'web/package-lock.json'
       - 'web/tsconfig.json'
       - 'web/vite.config*.ts'
+      - 'flutter-web/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -54,9 +55,10 @@ jobs:
           flutter-version: '3.24.5'
           cache: true
 
-      - name: Create Flutter web template
-        run: flutter create --platforms=web --project-name flutter_hbb .
-        working-directory: rustdesk/flutter
+      - name: Copy Flutter web template
+        run: |
+          mkdir -p rustdesk/flutter/web
+          cp -r flutter-web/* rustdesk/flutter/web/
 
       - name: Inject JS bridge bundle
         run: |
@@ -65,17 +67,6 @@ jobs:
           cp web/dist/ffmpeg.js rustdesk/flutter/web/ffmpeg.js
           cp web/dist/ffmpeg-core.js rustdesk/flutter/web/ffmpeg-core.js
           cp web/dist/ffmpeg-core.wasm rustdesk/flutter/web/ffmpeg-core.wasm
-
-      - name: Patch index.html to load JS bridge
-        run: |
-          INDEX="rustdesk/flutter/web/index.html"
-          if [ -f "$INDEX" ]; then
-            sed -i 's|</head>|<script type="module" src="js/rustdesk-web.js"></script></head>|' "$INDEX"
-            echo "Patched index.html to load JS bridge"
-          else
-            echo "ERROR: index.html not found" >&2
-            exit 1
-          fi
 
       - name: Flutter pub get
         run: flutter pub get
