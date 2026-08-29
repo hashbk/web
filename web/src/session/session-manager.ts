@@ -173,8 +173,8 @@ export class SessionManager {
     transport.onMessage = (bytes: Uint8Array) => {
       this.dispatcher!.dispatch(bytes);
     };
-    this.dispatcher.setSendToPeer((msg: hbb.Message) => {
-      transport.send(hbb.Message.encode(msg).finish());
+    transport.drainEarlyMessages((bytes: Uint8Array) => {
+      this.dispatcher!.dispatch(bytes);
     });
   }
 
