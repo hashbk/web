@@ -87,6 +87,7 @@ export class MessageDispatcher {
   private frameCount: Record<number, number> = {};
   private statsTs = 0;
   private statsTimer: ReturnType<typeof setInterval> | null = null;
+  private currentCodec = "";
 
   constructor(
     videoDecoder: VideoDecoderManager,
@@ -129,6 +130,16 @@ export class MessageDispatcher {
       const display = msg.videoFrame.display ?? 0;
       this.frameCount[display] = (this.frameCount[display] ?? 0) +
         this.countVideoFrames(msg.videoFrame);
+      const codec = this.getCodecFormat(msg.videoFrame);
+      if (codec !== this.currentCodec) {
+        this.currentCodec = codec;
+        this.callbacks.onGlobalEvent?.(
+          JSON.stringify({
+            name: "update_quality_status",
+            codec_format: codec,
+          }),
+        );
+      }
       this.videoDecoder.decodeVideoFrame(msg.videoFrame);
       this.sendVideoReceived();
       return;
@@ -391,6 +402,15 @@ export class MessageDispatcher {
       vf.av1s?.frames ??
       vf.vp8s?.frames;
     return frames?.length ?? 0;
+  }
+
+  private getCodecFormat(vf: hbb.IVideoFrame): string {
+    if (vf.vp9s) return "VP9";
+    if (vf.vp8s) return "VP8";
+    if (vf.av1s) return "AV1";
+    if (vf.h264s) return "H264";
+    if (vf.h265s) return "H265";
+    return "Unknown";
   }
 
   private startStatsTimer(): void {

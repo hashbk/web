@@ -65,6 +65,14 @@ export class SessionManager {
     this.videoDecoder = new VideoDecoderManager({
       onVideoFrame: config.onVideoFrame,
       onRgba: config.onRgba,
+      onChromaChange: (chroma: string) => {
+        config.onGlobalEvent?.(
+          JSON.stringify({
+            name: "update_quality_status",
+            chroma,
+          }),
+        );
+      },
     });
 
     this.dispatcher = new MessageDispatcher(this.videoDecoder, {
