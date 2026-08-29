@@ -52,6 +52,7 @@ export interface SendFilesParams {
   includeHidden: boolean;
   isRemote: boolean;
   isDir: boolean;
+  fileHandle?: FileSystemFileHandle;
 }
 
 interface DownloadJob {
@@ -59,6 +60,7 @@ interface DownloadJob {
   files: hbb.IFileEntry[];
   currentFileNum: number;
   writer?: FileSystemWritableFileStream;
+  fileHandle?: FileSystemFileHandle;
 }
 
 interface UploadJob {
@@ -98,7 +100,7 @@ export class FileTransferManager {
     });
 
     if (isRemote) {
-      this.downloadJobs.set(id, { to, files: [], currentFileNum: -1 });
+      this.downloadJobs.set(id, { to, files: [], currentFileNum: -1, fileHandle: params.fileHandle });
       this.config.transport.send(
         encodeSendFiles(id, path, fileNum, includeHidden),
       );
@@ -514,9 +516,13 @@ export class FileTransferManager {
         await job.writer.close();
         job.writer = undefined;
       }
-      const fullPath = this.config.localFs.joinPath(job.to, file.name ?? "");
-      const handle = await this.config.localFs.createFileHandle(fullPath);
-      job.writer = await handle.createWritable();
+      if (job.fileHandle) {
+        job.writer = await job.fileHandle.createWritable();
+      } else {
+        const fullPath = this.config.localFs.joinPath(job.to, file.name ?? "");
+        const handle = await this.config.localFs.createFileHandle(fullPath);
+        job.writer = await handle.createWritable();
+      }
       job.currentFileNum = fileNum;
     }
     if (data.length > 0 && job.writer) {

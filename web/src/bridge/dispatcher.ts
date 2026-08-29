@@ -406,9 +406,21 @@ export class BridgeDispatcher {
             is_remote: boolean;
             is_dir: boolean;
           };
-          if (args.is_remote && !entry.localFs.hasRoot()) {
-            const ok = await entry.localFs.pickRoot();
-            if (!ok) return "";
+          let fileHandle: FileSystemFileHandle | undefined;
+          if (args.is_remote) {
+            if (!args.is_dir && (globalThis as any).showSaveFilePicker) {
+              const name = args.path.split("/").pop() || "download";
+              try {
+                fileHandle = await (globalThis as any).showSaveFilePicker({
+                  suggestedName: name,
+                });
+              } catch {
+                return "";
+              }
+            } else if (!entry.localFs.hasRoot()) {
+              const ok = await entry.localFs.pickRoot();
+              if (!ok) return "";
+            }
           }
           await ft.sendFiles({
             id: args.id,
@@ -418,6 +430,7 @@ export class BridgeDispatcher {
             includeHidden: args.include_hidden,
             isRemote: args.is_remote,
             isDir: args.is_dir,
+            fileHandle,
           });
         }
         return "";
