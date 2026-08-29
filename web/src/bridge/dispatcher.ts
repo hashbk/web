@@ -590,11 +590,16 @@ export class BridgeDispatcher {
         const transport = this.getCurrentTransport();
         if (transport) {
           const args = JSON.parse(value) as { display?: number; width?: number; height?: number };
-          const msg = hbb.Message.create({
-            misc: {
-              changeResolution: { width: args.width ?? 0, height: args.height ?? 0 },
-            },
-          });
+          const resolution = { width: args.width ?? 0, height: args.height ?? 0 };
+          const msg = args.display !== undefined
+            ? hbb.Message.create({
+                misc: {
+                  changeDisplayResolution: { display: args.display, resolution },
+                },
+              })
+            : hbb.Message.create({
+                misc: { changeResolution: resolution },
+              });
           transport.send(hbb.Message.encode(msg).finish());
         }
         return "";
