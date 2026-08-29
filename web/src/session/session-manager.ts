@@ -237,4 +237,12 @@ export class SessionManager {
     this.videoDecoder.close();
     this.relay.close();
   }
+
+  get enableTrustedDevices(): boolean {
+    return this.relay.enableTrustedDevices;
+  }
+
+  getHwid(): Uint8Array {
+    return this.relay.getHwid();
+  }
 }

@@ -542,10 +542,12 @@ export class BridgeDispatcher {
       }
       case "send_2fa": {
         const transport = this.getCurrentTransport();
+        const entry = this.getCurrentSessionEntry();
         if (transport) {
           const args = JSON.parse(value) as { code?: string; trust_this_device?: boolean };
+          const hwid = args.trust_this_device && entry ? entry.manager.getHwid() : new Uint8Array(0);
           const msg = hbb.Message.create({
-            auth_2fa: { code: args.code ?? "" },
+            auth_2fa: { code: args.code ?? "", hwid },
           });
           transport.send(hbb.Message.encode(msg).finish());
         }
@@ -1131,7 +1133,8 @@ export class BridgeDispatcher {
         });
       }
       case "enable_trusted_devices": {
-        return "N";
+        const entry = this.getCurrentSessionEntry();
+        return entry?.manager.enableTrustedDevices ? "Y" : "N";
       }
       case "conn_session_id": {
         const entry = this.getCurrentSessionEntry();

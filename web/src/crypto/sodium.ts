@@ -80,3 +80,7 @@ export function base64Decode(s: string): Uint8Array {
 export function base64Encode(bytes: Uint8Array): string {
   return S().to_base64(bytes, 1);
 }
+
+export function cryptoHashSha256(data: Uint8Array): Uint8Array {
+  return S().crypto_hash_sha256(data);
+}
