@@ -627,8 +627,36 @@ export class BridgeDispatcher {
       }
       case "change_prefer_codec": {
         const transport = this.getCurrentTransport();
-        if (transport) {
-          const msg = hbb.Message.create({ misc: {} });
+        const entry = this.getCurrentSessionEntry();
+        if (transport && entry) {
+          const pref = getPeerOption(entry.peerId, "codec-preference");
+          const preferMap: Record<string, hbb.SupportedDecoding.PreferCodec> = {
+            "vp8": hbb.SupportedDecoding.PreferCodec.VP8,
+            "vp9": hbb.SupportedDecoding.PreferCodec.VP9,
+            "av1": hbb.SupportedDecoding.PreferCodec.AV1,
+            "h264": hbb.SupportedDecoding.PreferCodec.H264,
+            "h265": hbb.SupportedDecoding.PreferCodec.H265,
+          };
+          const prefer = preferMap[pref] ?? hbb.SupportedDecoding.PreferCodec.Auto;
+          const preferChroma = getPeerToggleOption(entry.peerId, "i444")
+            ? hbb.Chroma.I444
+            : hbb.Chroma.I420;
+          const msg = hbb.Message.create({
+            misc: {
+              option: {
+                supportedDecoding: {
+                  abilityVp8: 1,
+                  abilityVp9: 1,
+                  abilityAv1: 1,
+                  abilityH264: 1,
+                  abilityH265: 1,
+                  prefer,
+                  preferChroma,
+                  i444: { vp9: true, av1: true },
+                },
+              },
+            },
+          });
           transport.send(hbb.Message.encode(msg).finish());
         }
         return "";
