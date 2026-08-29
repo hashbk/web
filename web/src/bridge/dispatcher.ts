@@ -942,7 +942,7 @@ export class BridgeDispatcher {
         return getOption("custom-rendezvous-server") ? "false" : "true";
       }
       case "get_conn_status": {
-        return JSON.stringify({ status_num: 0 });
+        return JSON.stringify({ status_num: -1 });
       }
       case "resolve_avatar_url": {
         const trimmed = arg.trim();
