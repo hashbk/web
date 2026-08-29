@@ -216,11 +216,12 @@ describe("MessageDispatcher", () => {
     });
     dispatcher.dispatch(hbb.Message.encode(msg).finish());
     expect(mockDecode).toHaveBeenCalled();
-    expect(events.length).toBe(1);
-    const msgbox = JSON.parse(events[0]);
-    expect(msgbox.name).toBe("msgbox");
+    const msgbox = events.map(JSON.parse).find((e) => e.name === "msgbox");
+    expect(msgbox).toBeDefined();
     expect(msgbox.type).toBe("");
     expect(msgbox.link).toBe("");
+    const codecEvt = events.map(JSON.parse).find((e) => e.name === "update_quality_status");
+    expect(codecEvt?.codec_format).toBe("VP8");
   });
 
   it("silently ignores audioFrame", () => {

@@ -3,6 +3,7 @@ import { hbb } from "../proto/index.js";
 export interface WebCodecsCallbacks {
   onVideoFrame?: (display: number, frame: unknown) => void;
   onRgba?: (display: number, rgba: Uint8Array) => void;
+  onChromaChange?: (chroma: string) => void;
 }
 
 type Nalu = Uint8Array;
@@ -196,6 +197,7 @@ export class VideoDecoderManager {
   };
   private videoQueue: QueuedFrame[] = [];
   private decoding = false;
+  private currentChroma = "";
 
   constructor(private callbacks: WebCodecsCallbacks = {}) {
     this.ffmpeg = new FFmpegDecoder(".");
@@ -288,6 +290,11 @@ export class VideoDecoderManager {
       if (result && result.data) {
         const rgba = new Uint8Array(result.data);
         this.callbacks.onRgba?.(item.display, rgba);
+        const chroma = result.yuvFormat === 5 ? "4:4:4" : "4:2:0";
+        if (this.currentChroma !== chroma) {
+          this.currentChroma = chroma;
+          this.callbacks.onChromaChange?.(chroma);
+        }
       }
     } catch (e) {
       console.error("[ffmpeg] decode failed:", e);
