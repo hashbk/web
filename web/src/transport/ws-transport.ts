@@ -108,6 +108,10 @@ export class WsTransport {
     this.earlyMessages = [];
   }
 
+  pushEarlyMessage(data: Uint8Array): void {
+    this.earlyMessages.push(data);
+  }
+
   isSecured(): boolean {
     return this.encrypt !== null;
   }
