@@ -1217,11 +1217,19 @@ export class BridgeDispatcher {
         : entry.isTerminal
           ? ConnType.TERMINAL
           : ConnType.DEFAULT_CONN;
+    let myName = "web";
+    const userInfo = getLocalOption("user_info");
+    if (userInfo) {
+      try {
+        const info = JSON.parse(userInfo) as { display_name?: string; name?: string };
+        myName = info.display_name || info.name || myName;
+      } catch {}
+    }
     await entry.manager.startConnection({
       peerId: entry.peerId,
       password: entry.password,
       myId: "",
-      myName: "web",
+      myName,
       myPlatform: "Web",
       connType,
     });
