@@ -176,6 +176,9 @@ export class SessionManager {
   private installMessageDispatcher(): void {
     const transport = this.relay.getTransport();
     if (!transport || !this.dispatcher) return;
+    this.dispatcher.setSendToPeer((msg: hbb.Message) => {
+      transport.send(hbb.Message.encode(msg).finish());
+    });
     transport.onMessage = (bytes: Uint8Array) => {
       this.dispatcher!.dispatch(bytes);
     };
