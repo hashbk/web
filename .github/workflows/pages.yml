@@ -66,12 +66,15 @@ jobs:
           cp web/dist/ffmpeg-core.js rustdesk/flutter/web/ffmpeg-core.js
           cp web/dist/ffmpeg-core.wasm rustdesk/flutter/web/ffmpeg-core.wasm
 
-      - name: Patch index.html to load JS bridge
+      - name: Patch index.html to load JS bridge and SVG favicon
         run: |
           INDEX="rustdesk/flutter/web/index.html"
           if [ -f "$INDEX" ]; then
             sed -i 's|</head>|<script type="module" src="js/rustdesk-web.js"></script></head>|' "$INDEX"
-            echo "Patched index.html to load JS bridge"
+            cp rustdesk/res/scalable.svg rustdesk/flutter/web/scalable.svg
+            sed -i '/rel="icon"/d; /rel="apple-touch-icon"/d' "$INDEX"
+            sed -i 's|</head>|<link rel="icon" type="image/svg+xml" href="scalable.svg"/></head>|' "$INDEX"
+            echo "Patched index.html to load JS bridge and SVG favicon"
           else
             echo "ERROR: index.html not found" >&2
             exit 1
