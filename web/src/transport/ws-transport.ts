@@ -94,7 +94,7 @@ export class WsTransport {
 
   send(data: Uint8Array): void {
     const payload = this.encrypt ? this.encrypt.enc(data) : data;
-    this.ws.send(payload);
+    this.ws.send(payload as unknown as BufferSource);
   }
 
   setKey(key: Uint8Array): void {
