@@ -10,6 +10,7 @@ export class WsTransport {
   private encrypt: Encrypt | null = null;
   private pendingRecvs: PendingRecv[] = [];
   private closed = false;
+  private earlyMessages: Uint8Array[] = [];
   onMessage: ((data: Uint8Array) => void) | null = null;
   onClose: (() => void) | null = null;
   onError: ((e: Error) => void) | null = null;
@@ -29,8 +30,10 @@ export class WsTransport {
       if (pending) {
         if (pending.timer) clearTimeout(pending.timer);
         pending.resolve(plain);
+      } else if (this.onMessage) {
+        this.onMessage(plain);
       } else {
-        this.onMessage?.(plain);
+        this.earlyMessages.push(plain);
       }
     };
     ws.onclose = () => {
@@ -96,6 +99,13 @@ export class WsTransport {
 
   setKey(key: Uint8Array): void {
     this.encrypt = new Encrypt(key);
+  }
+
+  drainEarlyMessages(handler: (data: Uint8Array) => void): void {
+    for (const msg of this.earlyMessages) {
+      handler(msg);
+    }
+    this.earlyMessages = [];
   }
 
   isSecured(): boolean {
