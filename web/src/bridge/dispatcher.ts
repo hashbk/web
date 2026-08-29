@@ -1084,6 +1084,13 @@ export class BridgeDispatcher {
   }
 
   private async startSessionConnection(entry: SessionEntry): Promise<void> {
+    if (!entry.password) {
+      const savedPassword = getPeerOption(entry.peerId, "password");
+      if (savedPassword) {
+        entry.password = savedPassword;
+        entry.remember = true;
+      }
+    }
     const connType = entry.isFileTransfer
       ? ConnType.FILE_TRANSFER
       : entry.isViewCamera
