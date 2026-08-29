@@ -140,8 +140,13 @@ export class RelayClient {
     });
     this.transport.send(hbb.Message.encode(loginMsg).finish());
 
-    const respBytes = await this.transport.recv(15000);
-    const respMsg = hbb.Message.decode(respBytes);
+    let respBytes = await this.transport.recv(15000);
+    let respMsg = hbb.Message.decode(respBytes);
+    while (!respMsg.loginResponse) {
+      this.transport.pushEarlyMessage(respBytes);
+      respBytes = await this.transport.recv(15000);
+      respMsg = hbb.Message.decode(respBytes);
+    }
     if (respMsg.loginResponse) {
       if (respMsg.loginResponse.error) {
         throw new Error(`login failed: ${respMsg.loginResponse.error}`);
