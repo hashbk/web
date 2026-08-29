@@ -937,7 +937,7 @@ export class BridgeDispatcher {
         return "Web";
       }
       case "is_using_public_server": {
-        return "true";
+        return getOption("custom-rendezvous-server") ? "false" : "true";
       }
       case "get_conn_status": {
         return JSON.stringify({ status_num: 0 });
