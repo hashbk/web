@@ -648,7 +648,33 @@ export class BridgeDispatcher {
       case "select_files": {
         const ft = this.getCurrentFileTransfer();
         if (ft) {
-          ft.selectFiles();
+          void ft.selectFiles(
+            (value as unknown) === true || value === "true",
+          );
+        }
+        return "";
+      }
+      case "send_local_files": {
+        const ft = this.getCurrentFileTransfer();
+        if (ft) {
+          const args = JSON.parse(value) as {
+            id: number;
+            handle_index: number;
+            path: string;
+            to: string;
+            file_num: number;
+            include_hidden: boolean;
+            is_remote: boolean;
+          };
+          void ft.sendLocalFiles({
+            id: args.id,
+            handleIndex: args.handle_index,
+            path: args.path,
+            to: args.to,
+            fileNum: args.file_num,
+            includeHidden: args.include_hidden,
+            isRemote: args.is_remote,
+          });
         }
         return "";
       }

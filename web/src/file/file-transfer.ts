@@ -15,6 +15,7 @@ import {
   encodeFileBlock,
   encodeReadEmptyDirs,
   encodeRenameFile,
+  makeFileEntry,
 } from "./file-message.js";
 
 export enum JobState {
@@ -63,12 +64,16 @@ interface DownloadJob {
 interface UploadJob {
   path: string;
   files: hbb.IFileEntry[];
+  handles?: FileSystemFileHandle[];
 }
 
 export class FileTransferManager {
   private jobs = new Map<number, JobProgress>();
   private downloadJobs = new Map<number, DownloadJob>();
   private uploadJobs = new Map<number, UploadJob>();
+  private fileHandles = new Map<number, FileSystemHandle>();
+  private handleCounter = 0;
+  private batchCounter = 0;
 
 
   constructor(private config: FileTransferConfig) {}
@@ -218,10 +223,161 @@ export class FileTransferManager {
     }
   }
 
-  selectFiles(): void {
-    this.config.onGlobalEvent?.(
-      JSON.stringify({ name: "selected_files", files: [] }),
-    );
+  async selectFiles(isFolder: boolean): Promise<void> {
+    const batchId = ++this.batchCounter;
+    try {
+      if (isFolder) {
+        const handle = (await (globalThis as any).showDirectoryPicker()) as FileSystemDirectoryHandle;
+        const handleIndex = ++this.handleCounter;
+        this.fileHandles.set(handleIndex, handle);
+        this.config.onGlobalEvent?.(
+          JSON.stringify({
+            name: "selected_files",
+            batchId,
+            handleIndex,
+            file: {
+              name: handle.name,
+              size: 0,
+              entry_type: hbb.FileType.DirLink,
+              modified_time: 0,
+            },
+          }),
+        );
+      } else {
+        const handles = (await (globalThis as any).showOpenFilePicker({
+          multiple: true,
+        })) as FileSystemFileHandle[];
+        for (const fh of handles) {
+          const file = await fh.getFile();
+          const handleIndex = ++this.handleCounter;
+          this.fileHandles.set(handleIndex, fh);
+          this.config.onGlobalEvent?.(
+            JSON.stringify({
+              name: "selected_files",
+              batchId,
+              handleIndex,
+              file: {
+                name: file.name,
+                size: file.size,
+                entry_type: hbb.FileType.File,
+                modified_time: Math.floor(file.lastModified / 1000),
+              },
+            }),
+          );
+        }
+      }
+    } catch (e) {
+      console.error("Failed to select files:", e);
+    }
+  }
+
+  async sendLocalFiles(params: {
+    id: number;
+    handleIndex: number;
+    path: string;
+    to: string;
+    fileNum: number;
+    includeHidden: boolean;
+    isRemote: boolean;
+  }): Promise<void> {
+    if (params.isRemote) return;
+    try {
+      const handle = this.fileHandles.get(params.handleIndex);
+      if (!handle) throw new Error("Failed to get file handle");
+
+      let files: hbb.IFileEntry[];
+      let handles: FileSystemFileHandle[] | undefined;
+
+      if (handle.kind === "file") {
+        const fh = handle as FileSystemFileHandle;
+        const file = await fh.getFile();
+        files = [
+          makeFileEntry(
+            file.name,
+            hbb.FileType.File,
+            file.size,
+            Math.floor(file.lastModified / 1000),
+          ),
+        ];
+        handles = [fh];
+      } else {
+        const dh = handle as FileSystemDirectoryHandle;
+        const result = await this.collectFilesFromDir(
+          dh,
+          "",
+          params.includeHidden,
+        );
+        files = result.entries;
+        handles = result.handles;
+      }
+
+      let totalSize = 0;
+      for (const f of files) totalSize += Number(f.size ?? 0);
+
+      this.jobs.set(params.id, {
+        id: params.id,
+        path: params.path,
+        to: params.to,
+        fileNum: params.fileNum,
+        totalSize,
+        finishedSize: 0,
+        state: JobState.InProgress,
+        err: "",
+        isRemote: false,
+      });
+
+      this.config.transport.send(
+        encodeReceiveFiles(params.id, params.to, params.fileNum, files, totalSize),
+      );
+      this.uploadJobs.set(params.id, {
+        path: params.path,
+        files,
+        handles,
+      });
+    } catch (e) {
+      console.error("Failed to send local files:", e);
+      this.emitJobError(params.id, -1, (e as Error).message);
+    }
+  }
+
+  private async collectFilesFromDir(
+    dirHandle: FileSystemDirectoryHandle,
+    prefix: string,
+    includeHidden: boolean,
+  ): Promise<{ entries: hbb.IFileEntry[]; handles: FileSystemFileHandle[] }> {
+    const entries: hbb.IFileEntry[] = [];
+    const handles: FileSystemFileHandle[] = [];
+    const iter = (
+      dirHandle as unknown as {
+        entries: () => AsyncIterableIterator<[string, FileSystemHandle]>;
+      }
+    ).entries();
+    for await (const [name, handle] of iter) {
+      if (!includeHidden && name.startsWith(".")) continue;
+      const fullPath = prefix ? `${prefix}/${name}` : name;
+      if (handle.kind === "file") {
+        const fh = handle as FileSystemFileHandle;
+        const file = await fh.getFile();
+        entries.push(
+          makeFileEntry(
+            fullPath,
+            hbb.FileType.File,
+            file.size,
+            Math.floor(file.lastModified / 1000),
+          ),
+        );
+        handles.push(fh);
+      } else {
+        const sub = await this.collectFilesFromDir(
+          handle as FileSystemDirectoryHandle,
+          fullPath,
+          includeHidden,
+        );
+        entries.push(...sub.entries);
+        handles.push(...sub.handles);
+      }
+    }
+    return { entries, handles };
   }
 
   addJob(
@@ -401,9 +557,14 @@ export class FileTransferManager {
     if (!job) return;
     const file = job.files[fileNum];
     if (!file) return;
-    const fullPath = this.config.localFs.joinPath(job.path, file.name ?? "");
-    const handle = await this.config.localFs.getFileHandle(fullPath);
-    const fileObj = await handle.getFile();
+    let fileObj: File;
+    if (job.handles && job.handles[fileNum]) {
+      fileObj = await job.handles[fileNum].getFile();
+    } else {
+      const fullPath = this.config.localFs.joinPath(job.path, file.name ?? "");
+      const handle = await this.config.localFs.getFileHandle(fullPath);
+      fileObj = await handle.getFile();
+    }
     const reader = fileObj.stream().getReader();
     try {
       for (;;) {
