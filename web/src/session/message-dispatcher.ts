@@ -291,17 +291,20 @@ export class MessageDispatcher {
       if (w > 0 && h > 0) {
         this.videoDecoder.setDimensions(w, h);
       }
-      this.callbacks.onGlobalEvent?.(
-        JSON.stringify({
-          name: "switch_display",
-          display: String(sd.display ?? 0),
-          x: String(sd.x ?? 0),
-          y: String(sd.y ?? 0),
-          width: String(sd.width ?? 0),
-          height: String(sd.height ?? 0),
-          cursorEmbedded: sd.cursorEmbedded ? "true" : "false",
-        }),
-      );
+      const evt: Record<string, string> = {
+        name: "switch_display",
+        display: String(sd.display ?? 0),
+        x: String(sd.x ?? 0),
+        y: String(sd.y ?? 0),
+        width: String(sd.width ?? 0),
+        height: String(sd.height ?? 0),
+        cursor_embedded: sd.cursorEmbedded ? "1" : "0",
+      };
+      if (sd.originalResolution) {
+        evt["original_width"] = String(sd.originalResolution.width ?? 0);
+        evt["original_height"] = String(sd.originalResolution.height ?? 0);
+      }
+      this.callbacks.onGlobalEvent?.(JSON.stringify(evt));
       return;
     }
 
