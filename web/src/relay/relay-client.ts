@@ -3,6 +3,7 @@ import { checkWs } from "../transport/check-ws.js";
 import { WsTransport } from "../transport/ws-transport.js";
 import { createSymmetricKeyMsg, decodeIdPk, getRsPubKey } from "../crypto/handshake.js";
 import { computePassword } from "../crypto/password.js";
+import { cryptoHashSha256 } from "../crypto/sodium.js";
 import { APP_VERSION, ConnType, DEFAULT_RS_PUB_KEY, RELAY_PORT } from "../constants.js";
 
 function ensureRelayPort(endpoint: string): string {
@@ -43,10 +44,13 @@ export interface LoginParams {
 export interface LoginResult {
   peerInfo?: hbb.IPeerInfo;
   error?: string;
+  enableTrustedDevices?: boolean;
 }
 
 export class RelayClient {
   private transport: WsTransport | null = null;
+  private boxPublicKey: Uint8Array | null = null;
+  private _enableTrustedDevices = false;
 
   constructor(private config: RelayConfig) {}
 
@@ -93,7 +97,8 @@ export class RelayClient {
     }
     const theirBoxPk = decoded.pk;
 
-    const { asymmetricValue, symmetricValue, key } = createSymmetricKeyMsg(theirBoxPk);
+    const { asymmetricValue, symmetricValue, key, publicKey } = createSymmetricKeyMsg(theirBoxPk);
+    this.boxPublicKey = publicKey;
     const pubKeyMsg = hbb.Message.create({
       publicKey: { asymmetricValue, symmetricValue },
     });
@@ -149,13 +154,23 @@ export class RelayClient {
     }
     if (respMsg.loginResponse) {
       if (respMsg.loginResponse.error) {
-        return { error: respMsg.loginResponse.error };
+        this._enableTrustedDevices = respMsg.loginResponse.enableTrustedDevices ?? false;
+        return { error: respMsg.loginResponse.error, enableTrustedDevices: this._enableTrustedDevices };
       }
       if (respMsg.loginResponse.peerInfo) {
         return { peerInfo: respMsg.loginResponse.peerInfo };
       }
     }
     throw new Error("login: unexpected response");
+  }
+
+  get enableTrustedDevices(): boolean {
+    return this._enableTrustedDevices;
+  }
+
+  getHwid(): Uint8Array {
+    if (!this.boxPublicKey) return new Uint8Array(0);
+    return cryptoHashSha256(this.boxPublicKey);
   }
 
   getTransport(): WsTransport | null {

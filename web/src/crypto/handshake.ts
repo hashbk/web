@@ -13,12 +13,12 @@ export interface SymmetricKeyMsg {
   key: Uint8Array;
 }
 
-export function createSymmetricKeyMsg(theirPkB: Uint8Array): SymmetricKeyMsg {
+export function createSymmetricKeyMsg(theirPkB: Uint8Array): SymmetricKeyMsg & { publicKey: Uint8Array } {
   const { publicKey: ourPkB, privateKey: ourSkB } = cryptoBoxKeypair();
   const key = randomBytes(32);
   const nonce = new Uint8Array(24);
   const sealedKey = cryptoBoxEasy(key, nonce, theirPkB, ourSkB);
-  return { asymmetricValue: ourPkB, symmetricValue: sealedKey, key };
+  return { asymmetricValue: ourPkB, symmetricValue: sealedKey, key, publicKey: ourPkB };
 }
 
 export function decodeIdPk(
