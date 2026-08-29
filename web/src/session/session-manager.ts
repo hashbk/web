@@ -7,8 +7,27 @@ import { ConnType } from "../constants.js";
 import { VideoDecoderManager } from "../video/video-decoder.js";
 import { MessageDispatcher } from "./message-dispatcher.js";
 import { buildConnectionReadyEventJson } from "./message-dispatcher.js";
+import { getLocalOption } from "../i18n/translate.js";
+import { deriveApiServer } from "../config/option-store.js";
 
 import { hbb } from "../proto/index.js";
+
+function resolveAvatarFromUserInfo(): string | undefined {
+  const raw = getLocalOption("user_info");
+  if (!raw) return undefined;
+  try {
+    const info = JSON.parse(raw) as { avatar?: string };
+    const avatar = info.avatar?.trim();
+    if (!avatar) return undefined;
+    if (avatar.startsWith("/")) {
+      const apiServer = deriveApiServer();
+      if (apiServer) return apiServer.replace(/\/+$/, "") + avatar;
+    }
+    return avatar;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface SessionConfig {
   rendezvousServer: string;
@@ -118,6 +137,7 @@ export class SessionManager {
     if (!this.connectParams) throw new Error("not connected");
     if (!this.hash) throw new Error("no hash challenge");
     const connType = this.connectParams.connType ?? ConnType.DEFAULT_CONN;
+    const avatar = resolveAvatarFromUserInfo();
     const result = await this.relay.login({
       peerId: this.connectParams.peerId,
       password,
@@ -135,6 +155,7 @@ export class SessionManager {
       terminal: options?.isTerminal
         ? { serviceId: "" }
         : undefined,
+      avatar,
     });
 
     if (result.error) {

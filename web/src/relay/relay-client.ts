@@ -37,6 +37,7 @@ export interface LoginParams {
   fileTransfer?: { dir: string; showHidden: boolean };
   viewCamera?: Record<string, never>;
   terminal?: { serviceId: string };
+  avatar?: string;
 }
 
 export interface LoginResult {
@@ -134,6 +135,7 @@ export class RelayClient {
           : undefined,
         viewCamera: params.viewCamera,
         terminal: params.terminal,
+        avatar: params.avatar,
       },
     });
     this.transport.send(hbb.Message.encode(loginMsg).finish());
