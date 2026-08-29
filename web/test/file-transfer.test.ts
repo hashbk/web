@@ -381,20 +381,18 @@ describe("FileTransferManager", () => {
     expect(ft.getJob(19)!.state).toBe(JobState.Error);
   });
 
-  it("handleFileResponse with digest emits override_file_confirm event", () => {
+  it("handleFileResponse with digest sends confirm without override event", () => {
     const events: string[] = [];
+    const sent: hbb.IMessage[] = [];
     const { config } = makeConfig(events);
+    config.transport = { send: (data: Uint8Array) => { sent.push(hbb.Message.decode(data)); } };
     const ft = new FileTransferManager(config);
     const fr: hbb.IFileResponse = {
-      digest: { id: 20, fileNum: 1, isUpload: true, isIdentical: false },
+      digest: { id: 20, fileNum: 1, isUpload: false, isIdentical: false },
     };
     ft.handleFileResponse(fr);
-    expect(events.length).toBe(1);
-    const parsed = JSON.parse(events[0]);
-    expect(parsed.name).toBe("override_file_confirm");
-    expect(parsed.id).toBe("20");
-    expect(parsed.is_upload).toBe("true");
-    expect(parsed.is_identical).toBe("false");
+    expect(events.length).toBe(0);
+    expect(sent.length).toBe(1);
   });
 
   it("handleFileResponse with empty response does nothing", () => {

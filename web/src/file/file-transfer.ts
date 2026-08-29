@@ -483,16 +483,7 @@ export class FileTransferManager {
           },
         );
       }
-      this.config.onGlobalEvent?.(
-        JSON.stringify({
-          name: "override_file_confirm",
-          id: String(d.id ?? 0),
-          file_num: String(d.fileNum ?? 0),
-          read_path: "",
-          is_upload: d.isUpload ? "true" : "false",
-          is_identical: d.isIdentical ? "true" : "false",
-        }),
-      );
+
       return;
     }
   }
