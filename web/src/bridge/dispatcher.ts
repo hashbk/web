@@ -943,7 +943,14 @@ export class BridgeDispatcher {
         return JSON.stringify({ status_num: 0 });
       }
       case "resolve_avatar_url": {
-        return arg;
+        const trimmed = arg.trim();
+        if (trimmed.startsWith("/")) {
+          const apiServer = deriveApiServer();
+          if (apiServer) {
+            return apiServer.replace(/\/+$/, "") + trimmed;
+          }
+        }
+        return trimmed;
       }
       case "option:session": {
         const entry = this.getCurrentSessionEntry();
