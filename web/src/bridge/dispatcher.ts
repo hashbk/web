@@ -367,9 +367,36 @@ export class BridgeDispatcher {
         }
         return "";
       }
+      case "read_local_dir": {
+        const entry = this.getCurrentSessionEntry();
+        if (entry) {
+          const args = JSON.parse(value) as {
+            path: string;
+            show_hidden: boolean;
+          };
+          if (!entry.localFs.hasRoot()) {
+            const ok = await entry.localFs.pickRoot();
+            if (!ok) return "";
+          }
+          try {
+            const fd = await entry.localFs.readDir(args.path, args.show_hidden);
+            this.config.onGlobalEvent?.(
+              JSON.stringify({
+                name: "file_dir",
+                is_local: "true",
+                value: JSON.stringify(fd),
+              }),
+            );
+          } catch (e) {
+            console.error("read_local_dir failed:", e);
+          }
+        }
+        return "";
+      }
       case "send_files": {
         const ft = this.getCurrentFileTransfer();
-        if (ft) {
+        const entry = this.getCurrentSessionEntry();
+        if (ft && entry) {
           const args = JSON.parse(value) as {
             id: number;
             path: string;
@@ -379,6 +406,10 @@ export class BridgeDispatcher {
             is_remote: boolean;
             is_dir: boolean;
           };
+          if (args.is_remote && !entry.localFs.hasRoot()) {
+            const ok = await entry.localFs.pickRoot();
+            if (!ok) return "";
+          }
           await ft.sendFiles({
             id: args.id,
             path: args.path,
@@ -911,6 +942,10 @@ export class BridgeDispatcher {
         if (!entry) return "false";
         return getPeerToggleOption(entry.peerId, arg) ? "true" : "false";
       }
+      case "read_local_dir": {
+        return JSON.stringify({ id: 0, path: "", entries: [] });
+      }
+
       case "image_quality": {
         const entry = this.getCurrentSessionEntry();
         if (!entry) return "balanced";
