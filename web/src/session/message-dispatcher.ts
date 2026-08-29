@@ -5,6 +5,8 @@ import {
   cursorPositionToJson,
   cursorIdToJson,
 } from "../cursor/cursor.js";
+import { base64Encode } from "../crypto/sodium.js";
+import { initZstd, zstdDecompress } from "../file/zstd.js";
 
 export function buildPeerInfoEventJson(pi: hbb.IPeerInfo): string {
   const displays = (pi.displays ?? []).map((d) => {
@@ -197,6 +199,10 @@ export class MessageDispatcher {
       this.handleTestDelay(msg.testDelay);
       return;
     }
+    if (msg.terminalResponse) {
+      void this.handleTerminalResponse(msg.terminalResponse);
+      return;
+    }
     this.callbacks.onDefault?.(msg);
   }
 
@@ -323,6 +329,58 @@ export class MessageDispatcher {
       }),
     );
     this.callbacks.sendToPeer?.(hbb.Message.create({ testDelay: td }));
+  }
+
+  private async handleTerminalResponse(
+    tr: hbb.ITerminalResponse,
+  ): Promise<void> {
+    if (tr.opened) {
+      const o = tr.opened;
+      this.callbacks.onGlobalEvent?.(
+        JSON.stringify({
+          name: "terminal_response",
+          type: "opened",
+          terminal_id: o.terminalId ?? 0,
+          success: o.success ?? false,
+          message: o.message ?? "",
+          pid: o.pid ?? 0,
+          service_id: o.serviceId ?? "",
+        }),
+      );
+    } else if (tr.closed) {
+      this.callbacks.onGlobalEvent?.(
+        JSON.stringify({
+          name: "terminal_response",
+          type: "closed",
+          terminal_id: tr.closed.terminalId ?? 0,
+          exit_code: tr.closed.exitCode ?? 0,
+        }),
+      );
+    } else if (tr.error) {
+      this.callbacks.onGlobalEvent?.(
+        JSON.stringify({
+          name: "terminal_response",
+          type: "error",
+          terminal_id: tr.error.terminalId ?? 0,
+          message: tr.error.message ?? "",
+        }),
+      );
+    } else if (tr.data) {
+      const d = tr.data;
+      let raw = (d.data as Uint8Array) ?? new Uint8Array(0);
+      if (d.compressed && raw.length > 0) {
+        await initZstd();
+        raw = zstdDecompress(raw);
+      }
+      this.callbacks.onGlobalEvent?.(
+        JSON.stringify({
+          name: "terminal_response",
+          type: "data",
+          terminal_id: d.terminalId ?? 0,
+          data: base64Encode(raw),
+        }),
+      );
+    }
   }
 
   private countVideoFrames(vf: hbb.IVideoFrame): number {
