@@ -6,6 +6,10 @@ import {
   setAllOptions,
   getUserDefaultOption,
   setUserDefaultOption,
+  getPeerOption,
+  setPeerOption,
+  getAllPeers,
+  removePeerOptions,
 } from "../src/config/option-store.js";
 
 class LocalStorageMock {
@@ -133,5 +137,60 @@ describe("user default option", () => {
   it("uses rustdesk:ud: prefix", () => {
     setUserDefaultOption("custom-fps", "60");
     expect(mock.getItem("rustdesk:ud:custom-fps")).toBe("60");
+  });
+});
+
+describe("peer option", () => {
+  it("round-trips a peer value", () => {
+    setPeerOption("peer-1", "image_quality", "best");
+    expect(getPeerOption("peer-1", "image_quality")).toBe("best");
+  });
+
+  it("removes peer key when value is empty", () => {
+    setPeerOption("peer-1", "image_quality", "best");
+    setPeerOption("peer-1", "image_quality", "");
+    expect(getPeerOption("peer-1", "image_quality")).toBe("");
+    expect(mock.getItem("rustdesk:peer:peer-1:option:image_quality")).toBeNull();
+  });
+});
+
+describe("getAllPeers via index", () => {
+  it("returns peers written through setPeerOption", () => {
+    setPeerOption("peer-a", "info", JSON.stringify({ username: "u", hostname: "h", platform: "Linux" }));
+    setPeerOption("peer-a", "tm", "1000");
+    setPeerOption("peer-b", "info", JSON.stringify({ username: "x", hostname: "y", platform: "Windows" }));
+    const peers = getAllPeers();
+    expect(peers.map((p) => p.id).sort()).toEqual(["peer-a", "peer-b"]);
+    const a = peers.find((p) => p.id === "peer-a")!;
+    expect(a.username).toBe("u");
+    expect(a.hostname).toBe("h");
+    expect(a.platform).toBe("Linux");
+    expect(a.tm).toBe(1000);
+  });
+
+  it("migrates legacy peer keys without an index", () => {
+    mock.setItem("rustdesk:peer:legacy:option:info", JSON.stringify({ username: "lu", hostname: "lh", platform: "macOS" }));
+    mock.setItem("rustdesk:peer:legacy:option:tm", "2000");
+    mock.setItem("rustdesk:peer:legacy:option:alias", "my-legacy");
+    expect(mock.getItem("rustdesk:peer-index")).toBeNull();
+    const peers = getAllPeers();
+    expect(peers.map((p) => p.id)).toEqual(["legacy"]);
+    expect(peers[0].alias).toBe("my-legacy");
+    expect(peers[0].tm).toBe(2000);
+    expect(mock.getItem("rustdesk:peer-index")).not.toBeNull();
+  });
+});
+
+describe("removePeerOptions", () => {
+  it("removes all peer keys and drops from index", () => {
+    setPeerOption("peer-r", "info", JSON.stringify({ username: "r" }));
+    setPeerOption("peer-r", "tm", "3000");
+    setPeerOption("peer-r", "flutter:foo", "bar");
+    expect(getAllPeers().some((p) => p.id === "peer-r")).toBe(true);
+    removePeerOptions("peer-r");
+    expect(getAllPeers().some((p) => p.id === "peer-r")).toBe(false);
+    expect(mock.getItem("rustdesk:peer:peer-r:option:info")).toBeNull();
+    expect(mock.getItem("rustdesk:peer:peer-r:option:tm")).toBeNull();
+    expect(mock.getItem("rustdesk:peer:peer-r:option:flutter:foo")).toBeNull();
   });
 });

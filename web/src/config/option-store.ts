@@ -150,6 +150,42 @@ export function deriveLicenceKey(): string {
 }
 
 const PEER_OPTION_PREFIX = "rustdesk:peer:";
+const PEER_INDEX_KEY = "rustdesk:peer-index";
+
+function scanPeerIds(): string[] {
+  const peerIds = new Set<string>();
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(PEER_OPTION_PREFIX)) {
+      const rest = key.slice(PEER_OPTION_PREFIX.length);
+      const colonIdx = rest.indexOf(":option:");
+      if (colonIdx > 0) {
+        peerIds.add(rest.slice(0, colonIdx));
+      }
+    }
+  }
+  return Array.from(peerIds);
+}
+
+function loadPeerIndex(): string[] {
+  if (!hasLocalStorage()) return [];
+  const raw = localStorage.getItem(PEER_INDEX_KEY);
+  if (raw === null) {
+    const ids = scanPeerIds();
+    localStorage.setItem(PEER_INDEX_KEY, JSON.stringify(ids));
+    return ids;
+  }
+  try {
+    return JSON.parse(raw) as string[];
+  } catch {
+    return [];
+  }
+}
+
+function savePeerIndex(ids: string[]): void {
+  if (!hasLocalStorage()) return;
+  localStorage.setItem(PEER_INDEX_KEY, JSON.stringify(ids));
+}
 
 export function getPeerOption(peerId: string, name: string): string {
   if (!hasLocalStorage()) return "";
@@ -163,6 +199,11 @@ export function setPeerOption(peerId: string, name: string, value: string): void
     localStorage.removeItem(key);
   } else {
     localStorage.setItem(key, value);
+    const ids = loadPeerIndex();
+    if (!ids.includes(peerId)) {
+      ids.push(peerId);
+      savePeerIndex(ids);
+    }
   }
 }
 
@@ -185,18 +226,7 @@ export interface PeerEntry {
 
 export function getAllPeers(): PeerEntry[] {
   if (!hasLocalStorage()) return [];
-  const peerIds = new Set<string>();
-  const prefix = PEER_OPTION_PREFIX;
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith(prefix)) {
-      const rest = key.slice(prefix.length);
-      const colonIdx = rest.indexOf(":option:");
-      if (colonIdx > 0) {
-        peerIds.add(rest.slice(0, colonIdx));
-      }
-    }
-  }
+  const peerIds = loadPeerIndex();
   const peers: PeerEntry[] = [];
   for (const id of peerIds) {
     if (!id) continue;
@@ -223,4 +253,25 @@ export function getAllPeers(): PeerEntry[] {
     peers.push({ id, username, hostname, platform, alias, tm });
   }
   return peers;
+}
+
+export function removePeerOptions(peerId: string): void {
+  if (!hasLocalStorage()) return;
+  const prefix = `${PEER_OPTION_PREFIX}${peerId}:option:`;
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(prefix)) {
+      keysToRemove.push(key);
+    }
+  }
+  for (const key of keysToRemove) {
+    localStorage.removeItem(key);
+  }
+  const ids = loadPeerIndex();
+  const idx = ids.indexOf(peerId);
+  if (idx >= 0) {
+    ids.splice(idx, 1);
+    savePeerIndex(ids);
+  }
 }

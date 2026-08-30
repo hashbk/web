@@ -29,7 +29,9 @@ import {
   getPeerToggleOption,
   setPeerToggleOption,
   getAllPeers,
+  removePeerOptions,
 } from "../config/option-store.js";
+import { idbGet, idbSet, idbRemove } from "../config/idb-store.js";
 import { translate, getLangs, getLocalOption, setLocalOption } from "../i18n/translate.js";
 import { buildPeerInfoEventJson } from "../session/message-dispatcher.js";
 import { cryptoBoxKeypair, base64Encode } from "../crypto/sodium.js";
@@ -889,31 +891,31 @@ export class BridgeDispatcher {
           entry.manager.close();
           this.sessions.delete(value);
         }
-        this.removePeerOptions(value);
+        removePeerOptions(value);
         return "";
       }
       case "save_ab": {
-        setOption("ab-cache", value);
+        void idbSet("ab-cache", value);
         return "";
       }
       case "clear_ab": {
-        setOption("ab-cache", "");
+        void idbRemove("ab-cache");
         return "";
       }
       case "load_ab": {
-        this.config.onLoadAbFinished?.(getOption("ab-cache"));
+        void idbGet("ab-cache").then((v) => this.config.onLoadAbFinished?.(v));
         return "";
       }
       case "save_group": {
-        setOption("group-cache", value);
+        void idbSet("group-cache", value);
         return "";
       }
       case "clear_group": {
-        setOption("group-cache", "");
+        void idbRemove("group-cache");
         return "";
       }
       case "load_group": {
-        this.config.onLoadGroupFinished?.(getOption("group-cache"));
+        void idbGet("group-cache").then((v) => this.config.onLoadGroupFinished?.(v));
         return "";
       }
       case "account_auth": {
@@ -1619,18 +1621,4 @@ export class BridgeDispatcher {
     );
   }
 
-  private removePeerOptions(peerId: string): void {
-    if (typeof localStorage === "undefined") return;
-    const prefix = `rustdesk:peer:${peerId}:option:`;
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(prefix)) {
-        keysToRemove.push(key);
-      }
-    }
-    for (const key of keysToRemove) {
-      localStorage.removeItem(key);
-    }
-  }
 }
