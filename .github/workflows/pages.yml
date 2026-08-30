@@ -46,7 +46,7 @@ jobs:
           npm ci
           npm run gen-proto
           npm run gen-lang
-          npm run build:web
+          npm run build
         working-directory: web
 
       - name: Setup Flutter
@@ -64,6 +64,8 @@ jobs:
         run: |
           mkdir -p rustdesk/flutter/web/js
           cp web/dist/rustdesk-web.js rustdesk/flutter/web/js/rustdesk-web.js
+          cp -r web/dist/chunks rustdesk/flutter/web/js/chunks 2>/dev/null || true
+          cp -r web/dist/assets rustdesk/flutter/web/js/assets 2>/dev/null || true
           cp web/dist/ffmpeg.js rustdesk/flutter/web/ffmpeg.js
           cp web/dist/ffmpeg-core.js rustdesk/flutter/web/ffmpeg-core.js
           cp web/dist/ffmpeg-core.wasm rustdesk/flutter/web/ffmpeg-core.wasm
