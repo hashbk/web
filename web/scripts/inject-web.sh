@@ -11,5 +11,19 @@ if [ ! -f "$ROOT/dist/rustdesk-web.js" ]; then
 fi
 
 mkdir -p "$RUSTDESK_WEB/js"
+rm -f "$RUSTDESK_WEB/js"/*.js "$RUSTDESK_WEB/js"/*.wasm 2>/dev/null || true
+rm -rf "$RUSTDESK_WEB/js/chunks" "$RUSTDESK_WEB/js/assets" 2>/dev/null || true
+
 cp "$ROOT/dist/rustdesk-web.js" "$RUSTDESK_WEB/js/rustdesk-web.js"
-echo "Injected dist/rustdesk-web.js -> $RUSTDESK_WEB/js/rustdesk-web.js"
+
+for subdir in chunks assets; do
+  if [ -d "$ROOT/dist/$subdir" ]; then
+    mkdir -p "$RUSTDESK_WEB/js/$subdir"
+    cp "$ROOT/dist/$subdir"/*.js "$RUSTDESK_WEB/js/$subdir/" 2>/dev/null || true
+    cp "$ROOT/dist/$subdir"/*.wasm "$RUSTDESK_WEB/js/$subdir/" 2>/dev/null || true
+  fi
+done
+
+cp "$ROOT/dist"/*.wasm "$RUSTDESK_WEB/js/" 2>/dev/null || true
+
+echo "Injected dist/ -> $RUSTDESK_WEB/js/"
