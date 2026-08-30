@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 
 const sodiumCjs = fileURLToPath(
   new URL(
-    "./node_modules/libsodium-wrappers-sumo/dist/modules-sumo/libsodium-wrappers.js",
+    "./node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js",
     import.meta.url,
   ),
 );
@@ -41,7 +41,7 @@ export default defineConfig({
   base: "./",
   resolve: {
     alias: {
-      "libsodium-wrappers-sumo": sodiumCjs,
+      "libsodium-wrappers": sodiumCjs,
     },
   },
   optimizeDeps: {
