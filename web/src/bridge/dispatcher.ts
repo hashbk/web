@@ -103,6 +103,7 @@ export class BridgeDispatcher {
           connToken?: string;
         };
         const id = args.id ?? "";
+        if (id) setLocalOption("last_remote_id", id);
         const rendezvousServer = deriveRendezvousServer();
         const licenceKey = deriveLicenceKey();
         const manager = new SessionManager({
