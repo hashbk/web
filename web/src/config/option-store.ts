@@ -152,29 +152,10 @@ export function deriveLicenceKey(): string {
 const PEER_OPTION_PREFIX = "rustdesk:peer:";
 const PEER_INDEX_KEY = "rustdesk:peer-index";
 
-function scanPeerIds(): string[] {
-  const peerIds = new Set<string>();
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith(PEER_OPTION_PREFIX)) {
-      const rest = key.slice(PEER_OPTION_PREFIX.length);
-      const colonIdx = rest.indexOf(":option:");
-      if (colonIdx > 0) {
-        peerIds.add(rest.slice(0, colonIdx));
-      }
-    }
-  }
-  return Array.from(peerIds);
-}
-
 function loadPeerIndex(): string[] {
   if (!hasLocalStorage()) return [];
   const raw = localStorage.getItem(PEER_INDEX_KEY);
-  if (raw === null) {
-    const ids = scanPeerIds();
-    localStorage.setItem(PEER_INDEX_KEY, JSON.stringify(ids));
-    return ids;
-  }
+  if (raw === null) return [];
   try {
     return JSON.parse(raw) as string[];
   } catch {

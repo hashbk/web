@@ -168,17 +168,6 @@ describe("getAllPeers via index", () => {
     expect(a.tm).toBe(1000);
   });
 
-  it("migrates legacy peer keys without an index", () => {
-    mock.setItem("rustdesk:peer:legacy:option:info", JSON.stringify({ username: "lu", hostname: "lh", platform: "macOS" }));
-    mock.setItem("rustdesk:peer:legacy:option:tm", "2000");
-    mock.setItem("rustdesk:peer:legacy:option:alias", "my-legacy");
-    expect(mock.getItem("rustdesk:peer-index")).toBeNull();
-    const peers = getAllPeers();
-    expect(peers.map((p) => p.id)).toEqual(["legacy"]);
-    expect(peers[0].alias).toBe("my-legacy");
-    expect(peers[0].tm).toBe(2000);
-    expect(mock.getItem("rustdesk:peer-index")).not.toBeNull();
-  });
 });
 
 describe("removePeerOptions", () => {
