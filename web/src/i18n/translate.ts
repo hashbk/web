@@ -76,6 +76,12 @@ export async function loadLang(lang: string): Promise<void> {
   await loadingPromises[resolved];
 }
 
+export function preloadAllLangs(): void {
+  for (const [code] of LANGS) {
+    triggerLoad(code);
+  }
+}
+
 export function translate(locale: string, text: string): string {
   const savedLang =
     typeof localStorage !== "undefined"
