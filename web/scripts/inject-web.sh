@@ -27,5 +27,4 @@ for subdir in chunks assets; do
   fi
 done
 
-
 echo "Injected dist/ -> $RUSTDESK_WEB/js/ (entry: $ENTRY_JS)"

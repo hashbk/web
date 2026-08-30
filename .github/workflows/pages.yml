@@ -69,7 +69,6 @@ jobs:
           cp -r web/dist/chunks rustdesk/flutter/web/js/chunks 2>/dev/null || true
           cp -r web/dist/assets rustdesk/flutter/web/js/assets 2>/dev/null || true
 
-
       - name: Flutter pub get
         run: flutter pub get
         working-directory: rustdesk/flutter

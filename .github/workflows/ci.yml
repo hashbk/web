@@ -60,6 +60,5 @@ jobs:
             web/dist/rustdesk-web-*.js
             web/dist/chunks/
             web/dist/assets/
-
           if-no-files-found: error
           retention-days: 30
