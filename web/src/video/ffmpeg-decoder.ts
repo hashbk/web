@@ -16,6 +16,14 @@ interface FFmpegDecodeResponse {
   };
 }
 
+declare const __FFMPEG_JS_HASH__: string | undefined;
+declare const __FFMPEG_CORE_JS_HASH__: string | undefined;
+declare const __FFMPEG_CORE_WASM_HASH__: string | undefined;
+
+function withCacheBust(path: string, hash: string | undefined): string {
+  return hash ? `${path}?v=${hash}` : path;
+}
+
 export class FFmpegDecoder {
   private worker: Worker | null = null;
   private nextId = 0;
@@ -40,7 +48,10 @@ export class FFmpegDecoder {
   }
 
   private async _load(): Promise<void> {
-    const workerUrl = `${this.baseDir}/ffmpeg.js`;
+    const workerUrl = withCacheBust(
+      `${this.baseDir}/ffmpeg.js`,
+      typeof __FFMPEG_JS_HASH__ === "string" ? __FFMPEG_JS_HASH__ : "",
+    );
     this.worker = new Worker(workerUrl, { type: "module" });
     this.worker.onmessage = (e: MessageEvent<FFmpegWorkerMessage>) => {
       const { id, type, data } = e.data;
@@ -68,11 +79,17 @@ export class FFmpegDecoder {
     };
 
     const coreURL = await this.toBlobUrl(
-      `${this.baseDir}/ffmpeg-core.js`,
+      withCacheBust(
+        `${this.baseDir}/ffmpeg-core.js`,
+        typeof __FFMPEG_CORE_JS_HASH__ === "string" ? __FFMPEG_CORE_JS_HASH__ : "",
+      ),
       "text/javascript",
     );
     const wasmURL = await this.toBlobUrl(
-      `${this.baseDir}/ffmpeg-core.wasm`,
+      withCacheBust(
+        `${this.baseDir}/ffmpeg-core.wasm`,
+        typeof __FFMPEG_CORE_WASM_HASH__ === "string" ? __FFMPEG_CORE_WASM_HASH__ : "",
+      ),
       "application/wasm",
     );
 

@@ -1,6 +1,7 @@
 import { defineConfig, Plugin, UserConfig } from "vite";
 import { fileURLToPath } from "node:url";
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 
 const sodiumCjs = fileURLToPath(
@@ -14,6 +15,11 @@ function formatBuildDate(): string {
   const d = new Date();
   const p = (n: number): string => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function assetHash(filePath: string): string {
+  if (!existsSync(filePath)) return "";
+  return createHash("sha256").update(readFileSync(filePath)).digest("hex").slice(0, 12);
 }
 
 function copyFFmpegFiles(): Plugin {
@@ -38,6 +44,8 @@ function copyFFmpegFiles(): Plugin {
 }
 
 export function createBaseConfig(entry: string): UserConfig {
+  const root = dirname(fileURLToPath(import.meta.url));
+  const publicDir = join(root, "public");
   return defineConfig({
     resolve: {
       alias: {
@@ -49,6 +57,9 @@ export function createBaseConfig(entry: string): UserConfig {
     },
     define: {
       __BUILD_DATE__: JSON.stringify(formatBuildDate()),
+      __FFMPEG_JS_HASH__: JSON.stringify(assetHash(join(publicDir, "ffmpeg.js"))),
+      __FFMPEG_CORE_JS_HASH__: JSON.stringify(assetHash(join(publicDir, "ffmpeg-core.js"))),
+      __FFMPEG_CORE_WASM_HASH__: JSON.stringify(assetHash(join(publicDir, "ffmpeg-core.wasm"))),
     },
     plugins: [copyFFmpegFiles()],
     build: {

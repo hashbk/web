@@ -78,6 +78,9 @@ jobs:
           flutter build web --release --base-href "/${REPO_NAME}/"
         working-directory: rustdesk/flutter
 
+      - name: Inject asset cache-bust versions
+        run: node web/scripts/version-assets.mjs rustdesk/flutter/build/web/index.html
+
       - name: Setup Pages
         uses: actions/configure-pages@v6
 
