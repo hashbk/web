@@ -63,7 +63,7 @@ jobs:
       - name: Inject JS bridge bundle
         run: |
           mkdir -p rustdesk/flutter/web/js
-          ENTRY_JS=$(basename $(ls web/dist/rustdesk-web.*.js | head -1))
+          ENTRY_JS=$(basename $(ls web/dist/rustdesk-web-*.js | head -1))
           cp "web/dist/$ENTRY_JS" "rustdesk/flutter/web/js/$ENTRY_JS"
           sed -i "s|js/rustdesk-web.js|js/$ENTRY_JS|g" rustdesk/flutter/web/index.html
           cp -r web/dist/chunks rustdesk/flutter/web/js/chunks 2>/dev/null || true

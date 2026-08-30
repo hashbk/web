@@ -57,7 +57,7 @@ jobs:
         with:
           name: rustdesk-web-bundle
           path: |
-            web/dist/rustdesk-web.*.js
+            web/dist/rustdesk-web-*.js
             web/dist/chunks/
             web/dist/assets/
             web/dist/ffmpeg.js

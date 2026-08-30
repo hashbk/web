@@ -5,9 +5,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$DIR/.." && pwd)"
 RUSTDESK_WEB="$ROOT/../rustdesk/flutter/web"
 
-ENTRY_PATH=$(ls "$ROOT/dist"/rustdesk-web.*.js 2>/dev/null | head -1)
+ENTRY_PATH=$(ls "$ROOT/dist"/rustdesk-web-*.js 2>/dev/null | head -1)
 if [ -z "$ENTRY_PATH" ]; then
-  echo "error: no rustdesk-web.*.js found in $ROOT/dist. Run 'npm run build' first." >&2
+  echo "error: no rustdesk-web-*.js found in $ROOT/dist. Run 'npm run build' first." >&2
   exit 1
 fi
 ENTRY_JS=$(basename "$ENTRY_PATH")
