@@ -76,6 +76,7 @@ export class BridgeDispatcher {
   private accountAuthBody: unknown = null;
   private accountAuthKeepQuerying = false;
   private accountAuthPopup: Window | null = null;
+  private accountAuthRunning = false;
 
   constructor(private config: BridgeConfig) {
     try {
@@ -546,6 +547,9 @@ export class BridgeDispatcher {
         const entry = this.getCurrentSessionEntry();
         if (transport) {
           const args = JSON.parse(value) as { code?: string; trust_this_device?: boolean };
+          if (args.trust_this_device && entry) {
+            setPeerOption(entry.peerId, "trust-this-device", "Y");
+          }
           const hwid = args.trust_this_device && entry ? entry.manager.getHwid() : new Uint8Array(0);
           const msg = hbb.Message.create({
             auth_2fa: { code: args.code ?? "", hwid },
@@ -1408,6 +1412,18 @@ export class BridgeDispatcher {
   }
 
   private async runAccountAuth(op: string, remember: boolean): Promise<void> {
+    while (this.accountAuthRunning) {
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    this.accountAuthRunning = true;
+    try {
+      await this._runAccountAuth(op, remember);
+    } finally {
+      this.accountAuthRunning = false;
+    }
+  }
+
+  private async _runAccountAuth(op: string, remember: boolean): Promise<void> {
     const apiServer = deriveApiServer();
     const myId = "web";
     const uuid = this.getOrCreateUuid();
