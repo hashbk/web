@@ -63,17 +63,20 @@ export function createBaseConfig(entry: string): UserConfig {
     },
     plugins: [copyFFmpegFiles()],
     build: {
-      lib: {
-        entry,
-        name: "RustdeskWeb",
-        fileName: "rustdesk-web",
-        formats: ["es"],
-      },
       outDir: "dist",
       emptyOutDir: true,
+      manifest: true,
       rollupOptions: {
+        input: { main: entry },
         output: {
-          inlineDynamicImports: true,
+          entryFileNames: "index-[hash].js",
+          chunkFileNames: "[name]-[hash].js",
+          assetFileNames: "[name]-[hash][extname]",
+          manualChunks(id) {
+            if (id.includes("node_modules")) {
+              return "vendor";
+            }
+          },
         },
       },
     },

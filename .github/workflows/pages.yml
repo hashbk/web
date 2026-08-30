@@ -63,7 +63,8 @@ jobs:
       - name: Inject JS bridge bundle
         run: |
           mkdir -p rustdesk/flutter/web/js
-          cp web/dist/rustdesk-web.js rustdesk/flutter/web/js/rustdesk-web.js
+          cp web/dist/index-*.js web/dist/vendor-*.js web/dist/rolldown-runtime-*.js rustdesk/flutter/web/js/
+          cp web/dist/zstd-*.wasm rustdesk/flutter/web/js/
           cp web/dist/ffmpeg.js rustdesk/flutter/web/ffmpeg.js
           cp web/dist/ffmpeg-core.js rustdesk/flutter/web/ffmpeg-core.js
           cp web/dist/ffmpeg-core.wasm rustdesk/flutter/web/ffmpeg-core.wasm
