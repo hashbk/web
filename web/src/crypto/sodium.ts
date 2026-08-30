@@ -1,14 +1,13 @@
 // @ts-ignore: libsodium-wrappers-sumo ships no bundled type declarations
-import _sodium from "libsodium-wrappers-sumo";
-
-type Sodium = typeof _sodium;
+type Sodium = typeof import("libsodium-wrappers-sumo").default;
 
 let sodium: Sodium | null = null;
 
 export async function initSodium(): Promise<void> {
   if (sodium) return;
-  await _sodium.ready;
-  sodium = _sodium;
+  const mod = await import("libsodium-wrappers-sumo");
+  await mod.default.ready;
+  sodium = mod.default;
 }
 
 function S(): Sodium {
