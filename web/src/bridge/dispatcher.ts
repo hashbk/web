@@ -866,7 +866,6 @@ export class BridgeDispatcher {
       case "option:flutter:local": {
         const args = JSON.parse(value) as { name?: string; value?: string };
         if (args.name) setLocalOption(`flutter:${args.name}`, args.value ?? "");
-
         return "";
       }
       case "option:flutter:peer": {
