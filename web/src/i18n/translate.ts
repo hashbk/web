@@ -37,6 +37,14 @@ function resolveLang(savedLang: string, locale: string): string {
   return lang;
 }
 
+function splitPlaceholder(text: string): [string, string | null] {
+  const match = text.match(/\{(.*?)\}/);
+  if (match && match[1] !== undefined) {
+    return [text.replace(/\{(.*?)\}/, "{}"), match[1]];
+  }
+  return [text, null];
+}
+
 export function translate(locale: string, text: string): string {
   const savedLang =
     typeof localStorage !== "undefined"
@@ -44,15 +52,21 @@ export function translate(locale: string, text: string): string {
       : "";
   const lang = resolveLang(savedLang, locale);
 
+  const [key, placeholder] = splitPlaceholder(text);
+
   const dict = TRANSLATIONS[lang] || {};
   const enDict = TRANSLATIONS["en"] || {};
 
-  let result = dict[text];
+  let result = dict[key];
   if (!result && lang !== "en") {
-    result = enDict[text];
+    result = enDict[key];
   }
   if (!result) {
-    result = text;
+    result = key;
+  }
+
+  if (placeholder !== null) {
+    result = result.replace("{}", placeholder);
   }
 
   return result;
