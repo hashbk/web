@@ -9,7 +9,6 @@ const langDir = resolve(root, "../rustdesk/src/lang");
 const langRsPath = resolve(root, "../rustdesk/src/lang.rs");
 const outDir = resolve(root, "src/i18n");
 
-
 if (!existsSync(langDir)) {
   console.error(`error: lang directory not found: ${langDir}`);
   console.error("Ensure the rustdesk git submodule is initialized.");
