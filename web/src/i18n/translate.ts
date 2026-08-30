@@ -1,8 +1,10 @@
-import translationsData from "./translations.json" with { type: "json" };
+import translationsMeta from "./translations-meta.json" with { type: "json" };
+import enDict from "./lang/en.json" with { type: "json" };
 
-const LANGS = translationsData.langs as [string, string][];
-const TRANSLATIONS: Record<string, Record<string, string>> =
-  translationsData.translations;
+const LANGS = translationsMeta.langs as [string, string][];
+
+const loadedDicts: Record<string, Record<string, string>> = { en: enDict };
+const loadingPromises: Record<string, Promise<void>> = {};
 
 function resolveLang(savedLang: string, locale: string): string {
   const localeLower = locale.toLowerCase();
@@ -25,9 +27,12 @@ function resolveLang(savedLang: string, locale: string): string {
     }
   }
 
-  if (!TRANSLATIONS[lang]) {
+  const known = (code: string): boolean =>
+    loadedDicts[code] != null || LANGS.some(([c]) => c === code);
+
+  if (!known(lang)) {
     const base = lang.split(/[-_]/)[0];
-    if (TRANSLATIONS[base]) {
+    if (known(base)) {
       lang = base;
     } else {
       lang = "en";
@@ -45,6 +50,32 @@ function splitPlaceholder(text: string): [string, string | null] {
   return [text, null];
 }
 
+function triggerLoad(lang: string): void {
+  if (loadedDicts[lang] || loadingPromises[lang] != null) return;
+  if (!LANGS.some(([code]) => code === lang)) return;
+  loadingPromises[lang] = import(`./lang/${lang}.json`)
+    .then((mod) => {
+      loadedDicts[lang] = mod.default as Record<string, string>;
+    })
+    .catch((err) => {
+      console.warn(`[i18n] failed to load lang "${lang}":`, err);
+    })
+    .finally(() => {
+      delete loadingPromises[lang];
+    });
+}
+
+export async function loadLang(lang: string): Promise<void> {
+  const savedLang =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("lang") || ""
+      : "";
+  const resolved = resolveLang(savedLang, lang);
+  if (loadedDicts[resolved]) return;
+  triggerLoad(resolved);
+  await loadingPromises[resolved];
+}
+
 export function translate(locale: string, text: string): string {
   const savedLang =
     typeof localStorage !== "undefined"
@@ -54,12 +85,12 @@ export function translate(locale: string, text: string): string {
 
   const [key, placeholder] = splitPlaceholder(text);
 
-  const dict = TRANSLATIONS[lang] || {};
-  const enDict = TRANSLATIONS["en"] || {};
+  const dict = loadedDicts[lang] || {};
+  const enDictLocal = loadedDicts["en"] || {};
 
   let result = dict[key];
   if (!result && lang !== "en") {
-    result = enDict[key];
+    result = enDictLocal[key];
   }
   if (!result) {
     result = key;
@@ -67,6 +98,10 @@ export function translate(locale: string, text: string): string {
 
   if (placeholder !== null) {
     result = result.replace("{}", placeholder);
+  }
+
+  if (lang !== "en" && !loadedDicts[lang]) {
+    triggerLoad(lang);
   }
 
   return result;

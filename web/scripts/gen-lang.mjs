@@ -8,7 +8,6 @@ const root = resolve(__dirname, "..");
 const langDir = resolve(root, "../rustdesk/src/lang");
 const langRsPath = resolve(root, "../rustdesk/src/lang.rs");
 const outDir = resolve(root, "src/i18n");
-const outPath = resolve(outDir, "translations.json");
 
 if (!existsSync(langDir)) {
   console.error(`error: lang directory not found: ${langDir}`);
@@ -73,14 +72,18 @@ for (const [code, displayName] of LANGS) {
 }
 
 mkdirSync(outDir, { recursive: true });
-const output = {
-  langs: LANGS.map(([code, name]) => [code, `${name} (${code})`]),
-  translations,
-};
-writeFileSync(outPath, JSON.stringify(output), "utf-8");
+const langFilesDir = resolve(outDir, "lang");
+mkdirSync(langFilesDir, { recursive: true });
+
+const langsList = LANGS.map(([code, name]) => [code, `${name} (${code})`]);
+writeFileSync(resolve(outDir, "translations-meta.json"), JSON.stringify({ langs: langsList }), "utf-8");
+
+for (const [code, dict] of Object.entries(translations)) {
+  writeFileSync(resolve(langFilesDir, `${code}.json`), JSON.stringify(dict), "utf-8");
+}
 
 const langCount = Object.keys(translations).length;
 const keyCount = Object.keys(translations["en"] || {}).length;
-console.log(`Generated ${outPath}`);
+console.log(`Generated translations-meta.json + ${langCount} per-lang JSON files in ${langFilesDir}`);
 console.log(`  Languages: ${langCount}`);
 console.log(`  Keys (en): ${keyCount}`);
