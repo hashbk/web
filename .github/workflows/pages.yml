@@ -76,7 +76,7 @@ jobs:
       - name: Build Flutter web
         run: |
           REPO_NAME="${{ github.event.repository.name }}"
-          flutter build web --release --base-href "/${REPO_NAME}/" --obfuscate --split-debug-info=build/symbols
+          flutter build web --release --base-href "/${REPO_NAME}/"
         working-directory: rustdesk/flutter
 
       - name: Setup Pages
