@@ -1,6 +1,5 @@
 node_modules/
 dist/
 src/proto/generated/
-src/i18n/translations.json
 src/i18n/translations-meta.json
 src/i18n/lang/
