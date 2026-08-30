@@ -200,7 +200,7 @@ export class VideoDecoderManager {
   private currentChroma = "";
 
   constructor(private callbacks: WebCodecsCallbacks = {}) {
-    this.ffmpeg = new FFmpegDecoder(".");
+    this.ffmpeg = new FFmpegDecoder();
   }
 
   async loadFFmpeg(): Promise<void> {

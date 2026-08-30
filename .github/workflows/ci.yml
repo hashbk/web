@@ -60,8 +60,5 @@ jobs:
             web/dist/rustdesk-web-*.js
             web/dist/chunks/
             web/dist/assets/
-            web/dist/ffmpeg.js
-            web/dist/ffmpeg-core.js
-            web/dist/ffmpeg-core.wasm
           if-no-files-found: error
           retention-days: 30
