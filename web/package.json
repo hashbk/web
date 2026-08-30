@@ -9,7 +9,6 @@
     "gen-proto": "node scripts/gen-proto.mjs",
     "gen-lang": "node scripts/gen-lang.mjs",
     "build": "vite build",
-
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
