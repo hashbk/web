@@ -58,7 +58,7 @@ export default defineConfig({
       input: "src/bootstrap.ts",
       output: {
         format: "es",
-        entryFileNames: "rustdesk-web.js",
+        entryFileNames: "rustdesk-web-[hash].js",
         chunkFileNames: "chunks/[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash][extname]",
       },
