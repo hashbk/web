@@ -73,14 +73,20 @@ for (const [code, displayName] of LANGS) {
 }
 
 mkdirSync(outDir, { recursive: true });
-const output = {
-  langs: LANGS.map(([code, name]) => [code, `${name} (${code})`]),
-  translations,
-};
-writeFileSync(outPath, JSON.stringify(output), "utf-8");
+const langFilesDir = resolve(outDir, "lang");
+mkdirSync(langFilesDir, { recursive: true });
+
+const langsList = LANGS.map(([code, name]) => [code, `${name} (${code})`]);
+writeFileSync(outPath, JSON.stringify({ langs: langsList, translations }), "utf-8");
+writeFileSync(resolve(outDir, "translations-meta.json"), JSON.stringify({ langs: langsList }), "utf-8");
+
+for (const [code, dict] of Object.entries(translations)) {
+  writeFileSync(resolve(langFilesDir, `${code}.json`), JSON.stringify(dict), "utf-8");
+}
 
 const langCount = Object.keys(translations).length;
 const keyCount = Object.keys(translations["en"] || {}).length;
 console.log(`Generated ${outPath}`);
 console.log(`  Languages: ${langCount}`);
 console.log(`  Keys (en): ${keyCount}`);
+console.log(`  Per-lang JSON written to ${langFilesDir}`);
