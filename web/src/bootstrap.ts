@@ -2,7 +2,7 @@ import { BridgeDispatcher } from "./bridge/dispatcher.js";
 import type { BridgeConfig } from "./bridge/dispatcher.js";
 import { initSodium } from "./crypto/sodium.js";
 import { initZstd } from "./file/zstd.js";
-import { loadLang } from "./i18n/translate.js";
+import { loadLang, preloadAllLangs } from "./i18n/translate.js";
 import { DEFAULT_RS_PUB_KEY } from "./constants.js";
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -116,12 +116,14 @@ g["init"] = (): void => {
       if (typeof g["onInitFinished"] === "function") {
         (g["onInitFinished"] as () => void)();
       }
+      preloadAllLangs();
     })
     .catch((err) => {
       console.error("[rustdesk-web] init failed:", err);
       if (typeof g["onInitFinished"] === "function") {
         (g["onInitFinished"] as () => void)();
       }
+      preloadAllLangs();
     });
 };
 

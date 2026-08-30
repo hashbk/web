@@ -32,7 +32,7 @@ import {
   removePeerOptions,
 } from "../config/option-store.js";
 import { idbGet, idbSet, idbRemove } from "../config/idb-store.js";
-import { translate, getLangs, getLocalOption, setLocalOption } from "../i18n/translate.js";
+import { translate, getLangs, getLocalOption, setLocalOption, loadLang } from "../i18n/translate.js";
 import { buildPeerInfoEventJson } from "../session/message-dispatcher.js";
 import { cryptoBoxKeypair, base64Encode } from "../crypto/sodium.js";
 
@@ -860,9 +860,7 @@ export class BridgeDispatcher {
       case "option:local": {
         const args = JSON.parse(value) as { name?: string; value?: string };
         if (args.name) setLocalOption(args.name, args.value ?? "");
-        if (args.name === "lang" && typeof location !== "undefined") {
-          location.reload();
-        }
+        if (args.name === "lang" && args.value) void loadLang(args.value);
         return "";
       }
       case "option:flutter:local": {
