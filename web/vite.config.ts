@@ -38,6 +38,7 @@ function copyFFmpegFiles(): Plugin {
 }
 
 export default defineConfig({
+  base: "./",
   resolve: {
     alias: {
       "libsodium-wrappers-sumo": sodiumCjs,

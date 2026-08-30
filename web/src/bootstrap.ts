@@ -2,6 +2,7 @@ import { BridgeDispatcher } from "./bridge/dispatcher.js";
 import type { BridgeConfig } from "./bridge/dispatcher.js";
 import { initSodium } from "./crypto/sodium.js";
 import { initZstd } from "./file/zstd.js";
+import { loadLang } from "./i18n/translate.js";
 import { DEFAULT_RS_PUB_KEY } from "./constants.js";
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -108,7 +109,8 @@ g["isMobile"] = (): boolean => {
 g["rustdeskLocalFonts"] = false;
 
 g["init"] = (): void => {
-  initSodium()
+  const locale = typeof navigator !== "undefined" ? navigator.language : "en";
+  Promise.all([initSodium(), loadLang(locale)])
     .then(() => {
       sodiumReady = true;
       if (typeof g["onInitFinished"] === "function") {
