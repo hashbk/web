@@ -1,3 +1,7 @@
+import ffmpegWorkerUrl from "./ffmpeg.js?url";
+import ffmpegCoreJsUrl from "./ffmpeg-core.js?url";
+import ffmpegCoreWasmUrl from "./ffmpeg-core.wasm?url";
+
 interface FFmpegDecodeResult {
   data: ArrayBuffer;
   yuvFormat: number;
@@ -26,11 +30,7 @@ export class FFmpegDecoder {
   private recycledBuffers: ArrayBuffer[] = [];
   private loaded = false;
   private loading: Promise<void> | null = null;
-  private baseDir: string;
 
-  constructor(baseDir: string = ".") {
-    this.baseDir = baseDir;
-  }
 
   async load(): Promise<void> {
     if (this.loaded) return;
@@ -40,8 +40,7 @@ export class FFmpegDecoder {
   }
 
   private async _load(): Promise<void> {
-    const workerUrl = `${this.baseDir}/ffmpeg.js`;
-    this.worker = new Worker(workerUrl, { type: "module" });
+    this.worker = new Worker(ffmpegWorkerUrl, { type: "module" });
     this.worker.onmessage = (e: MessageEvent<FFmpegWorkerMessage>) => {
       const { id, type, data } = e.data;
       const entry = this.pending.get(id);
@@ -67,14 +66,8 @@ export class FFmpegDecoder {
       console.error("[ffmpeg] worker error:", e);
     };
 
-    const coreURL = await this.toBlobUrl(
-      `${this.baseDir}/ffmpeg-core.js`,
-      "text/javascript",
-    );
-    const wasmURL = await this.toBlobUrl(
-      `${this.baseDir}/ffmpeg-core.wasm`,
-      "application/wasm",
-    );
+    const coreURL = await this.toBlobUrl(ffmpegCoreJsUrl, "text/javascript");
+    const wasmURL = await this.toBlobUrl(ffmpegCoreWasmUrl, "application/wasm");
 
     await this.send("LOAD", { coreURL, wasmURL });
     this.loaded = true;

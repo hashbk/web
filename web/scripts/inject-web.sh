@@ -27,6 +27,5 @@ for subdir in chunks assets; do
   fi
 done
 
-cp "$ROOT/dist"/*.wasm "$RUSTDESK_WEB/js/" 2>/dev/null || true
 
 echo "Injected dist/ -> $RUSTDESK_WEB/js/ (entry: $ENTRY_JS)"

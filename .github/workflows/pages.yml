@@ -68,9 +68,7 @@ jobs:
           sed -i "s|js/rustdesk-web.js|js/$ENTRY_JS|g" rustdesk/flutter/web/index.html
           cp -r web/dist/chunks rustdesk/flutter/web/js/chunks 2>/dev/null || true
           cp -r web/dist/assets rustdesk/flutter/web/js/assets 2>/dev/null || true
-          cp web/dist/ffmpeg.js rustdesk/flutter/web/ffmpeg.js
-          cp web/dist/ffmpeg-core.js rustdesk/flutter/web/ffmpeg-core.js
-          cp web/dist/ffmpeg-core.wasm rustdesk/flutter/web/ffmpeg-core.wasm
+
 
       - name: Flutter pub get
         run: flutter pub get
