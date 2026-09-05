@@ -30,6 +30,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    target: "es2022",
+    chunkSizeWarningLimit: 1100,
     rollupOptions: {
       input: "src/bootstrap.ts",
       output: {
@@ -37,6 +39,11 @@ export default defineConfig({
         entryFileNames: "rustdesk-web-[hash].js",
         chunkFileNames: "chunks/[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash][extname]",
+        manualChunks(id) {
+          if (id.includes("node_modules/protobufjs/")) {
+            return "protobufjs";
+          }
+        },
       },
     },
   },
