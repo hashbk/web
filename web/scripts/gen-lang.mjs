@@ -30,17 +30,26 @@ while ((m = langEntryRe.exec(langsMatch[1])) !== null) {
   LANGS.push([m[1], m[2]]);
 }
 
-const moduleToCode = {
-  ar: "ar", be: "be", bg: "bg", ca: "ca", cn: "zh-cn", cs: "cs",
-  da: "da", de: "de", el: "el", en: "en", eo: "eo", es: "es",
-  et: "et", eu: "eu", fa: "fa", fr: "fr", ge: "ge", gu: "gu",
-  he: "he", hi: "hi", hr: "hr", hu: "hu", id: "id", it: "it",
-  ja: "ja", ko: "ko", kz: "kz", lt: "lt", lv: "lv", ml: "ml",
-  nb: "nb", nl: "nl", pl: "pl", ptbr: "pt", ro: "ro", ru: "ru",
-  sc: "sc", sk: "sk", sl: "sl", sq: "sq", sr: "sr", sv: "sv",
-  ta: "ta", th: "th", tr: "tr", tw: "zh-tw", uk: "uk", ur: "ur",
-  vi: "vi", fi: "fi",
-};
+// Parse the code -> module mapping from the `translate_locale` match block in
+// lang.rs so new languages added upstream are picked up automatically instead
+// of maintaining a hardcoded table here.
+const matchBlockRe = /match\s+lang\.as_str\(\)\s*\{([\s\S]*?)\n\s*\}/;
+const matchBlock = langRsContent.match(matchBlockRe);
+if (!matchBlock) {
+  console.error("error: could not parse translate_locale match block from lang.rs");
+  process.exit(1);
+}
+const codeToModule = {};
+let defaultModule = null;
+const mappingEntryRe = /"([^"]+)"\s*=>\s*(\w+)::T\.deref\(\)/g;
+let mm;
+while ((mm = mappingEntryRe.exec(matchBlock[1])) !== null) {
+  codeToModule[mm[1]] = mm[2];
+}
+const defaultMatch = matchBlock[1].match(/_\s*=>\s*(\w+)::T\.deref\(\)/);
+if (defaultMatch) {
+  defaultModule = defaultMatch[1];
+}
 
 function parseLangFile(filePath) {
   const content = readFileSync(filePath, "utf-8");
@@ -58,7 +67,7 @@ function parseLangFile(filePath) {
 
 const translations = {};
 for (const [code, displayName] of LANGS) {
-  const moduleKey = Object.keys(moduleToCode).find((k) => moduleToCode[k] === code);
+  const moduleKey = codeToModule[code] ?? defaultModule;
   if (!moduleKey) {
     console.warn(`warning: no module mapping for lang code "${code}", skipping`);
     continue;
