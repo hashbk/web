@@ -34,6 +34,17 @@ function av1CodecString(): string {
   return "av01.0.04M.08";
 }
 
+function codecName(codec: number): string {
+  switch (codec) {
+    case CODEC_VP8: return "vp8";
+    case CODEC_VP9: return "vp9";
+    case CODEC_AV1: return "av1";
+    case CODEC_H264: return "h264";
+    case CODEC_H265: return "h265";
+    default: return `unknown(${codec})`;
+  }
+}
+
 export class WebCodecsDecoder {
   private decoder: VideoDecoder | null = null;
   private configuredCodec = -1;
@@ -41,6 +52,7 @@ export class WebCodecsDecoder {
   private readonly sink: WebCodecsFrameSink;
   private nextTimestamp = 0;
   private readonly failedCodecs = new Set<number>();
+  private loggedFirstFrame = false;
 
   constructor(display: number, sink: WebCodecsFrameSink) {
     this.display = display;
@@ -64,9 +76,11 @@ export class WebCodecsDecoder {
       let justConfigured = false;
       if (this.configuredCodec !== codec) {
         if (!this.configure(codec, data)) {
+          console.debug(`[webcodecs] display=${this.display} ${codecName(codec)} configure returned false (no SPS/PPS yet), deferring to ffmpeg`);
           return false;
         }
         justConfigured = true;
+        console.log(`[webcodecs] display=${this.display} ${codecName(codec)} configured`);
       }
 
       const dec = this.decoder;
@@ -125,10 +139,15 @@ export class WebCodecsDecoder {
     this.closeDecoder();
     this.decoder = new VideoDecoder({
       output: (frame: VideoFrame) => {
+        if (!this.loggedFirstFrame) {
+          this.loggedFirstFrame = true;
+          console.log(`[webcodecs] display=${this.display} first frame decoded: format=${frame.format} ${frame.codedWidth}x${frame.codedHeight}`);
+        }
         this.sink.onChromaChange(chromaFromFormat(frame.format ?? ""));
         this.sink.onFrame(this.display, frame);
       },
       error: (e: DOMException) => {
+        console.error(`[webcodecs] display=${this.display} ${codecName(this.configuredCodec)} VideoDecoder error: ${e.name}: ${e.message}`);
         this.sink.onError(new Error(e.message));
       },
     });

@@ -127,8 +127,16 @@ export class VideoDecoderManager {
     data: Uint8Array,
     isKey: boolean,
   ): boolean {
-    if (this.webcodecsDisabled) return false;
-    if (!WebCodecsDecoder.available || !WebCodecsDecoder.canHandle(codec)) {
+    if (this.webcodecsDisabled) {
+      console.debug("[video] webcodecs disabled, using ffmpeg");
+      return false;
+    }
+    if (!WebCodecsDecoder.available) {
+      console.warn("[video] WebCodecs VideoDecoder not available, using ffmpeg");
+      return false;
+    }
+    if (!WebCodecsDecoder.canHandle(codec)) {
+      console.debug(`[video] codec ${codec} not handled by WebCodecs (h265), using ffmpeg`);
       return false;
     }
 
@@ -148,7 +156,11 @@ export class VideoDecoderManager {
       this.webcodecs.set(display, decoder);
     }
 
-    return decoder.decode(codec, data, isKey);
+    const result = decoder.decode(codec, data, isKey);
+    if (!result) {
+      console.debug(`[video] webcodecs decode returned false for display=${display} codec=${codec}, queuing ffmpeg fallback`);
+    }
+    return result;
   }
 
   private updateChroma(chroma: string): void {
