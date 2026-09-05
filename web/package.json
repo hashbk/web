@@ -17,10 +17,10 @@
   "dependencies": {
     "@bokuweb/zstd-wasm": "^0.0.27",
     "libsodium-wrappers": "^0.8.4",
-    "protobufjs": "^8.7.2"
+    "protobufjs": "^8.8.0"
   },
   "devDependencies": {
-    "protobufjs-cli": "^2.6.2",
+    "protobufjs-cli": "^2.7.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
