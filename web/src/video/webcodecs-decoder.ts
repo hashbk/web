@@ -61,12 +61,12 @@ export class WebCodecsDecoder {
     if (this.failedCodecs.has(codec)) return false;
 
     try {
+      let justConfigured = false;
       if (this.configuredCodec !== codec) {
-        if (!isKey) return false;
         if (!this.configure(codec, data)) {
-          this.failedCodecs.add(codec);
           return false;
         }
+        justConfigured = true;
       }
 
       const dec = this.decoder;
@@ -75,7 +75,7 @@ export class WebCodecsDecoder {
       }
 
       const chunk = new EncodedVideoChunk({
-        type: isKey ? "key" : "delta",
+        type: justConfigured || isKey ? "key" : "delta",
         timestamp: this.nextTimestamp++,
         data,
       });
