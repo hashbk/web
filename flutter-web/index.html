@@ -36,6 +36,41 @@
 	<script type="module" src="js/rustdesk-web.js"></script>
 </head>
 <body>
+	<style>
+		#rdl-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#1f1f2e;color:#e6e6e6;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;opacity:1;transition:opacity .4s ease}
+		#rdl-splash.rdl-out{opacity:0;pointer-events:none}
+		#rdl-splash .rdl-ring{width:54px;height:54px;border:4px solid rgba(255,255,255,.18);border-top-color:#5b8def;border-radius:50%;animation:rdl-spin 1s linear infinite}
+		#rdl-splash .rdl-title{font-size:20px;font-weight:600;letter-spacing:.5px}
+		#rdl-splash .rdl-hint{font-size:13px;opacity:.6}
+		@keyframes rdl-spin{to{transform:rotate(360deg)}}
+		@media (prefers-reduced-motion:reduce){#rdl-splash .rdl-ring{animation-duration:2.4s}}
+	</style>
+	<div id="rdl-splash" role="status" aria-busy="true">
+		<div class="rdl-ring"></div>
+		<div class="rdl-title">RustDesk</div>
+		<div class="rdl-hint">Loading…</div>
+	</div>
+	<script>
+		(function () {
+			var el = document.getElementById("rdl-splash");
+			if (!el) return;
+			var done = false;
+			function hide() {
+				if (done) return;
+				done = true;
+				el.classList.add("rdl-out");
+				setTimeout(function () { el.parentNode && el.parentNode.removeChild(el); }, 450);
+			}
+			function check() {
+				if (document.querySelector("canvas, flt-glass-pane, flutter-view")) hide();
+			}
+			try {
+				new MutationObserver(check).observe(document.documentElement, { childList: true, subtree: true });
+			} catch (e) {}
+			setTimeout(hide, 8000);
+			check();
+		})();
+	</script>
 	<script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
